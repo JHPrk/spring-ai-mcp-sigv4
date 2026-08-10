@@ -1,0 +1,22 @@
+{
+  "properties": [
+    {
+      "name": "spring.ai.mcp.client.authorization.aws.connections.*.region",
+      "type": "java.lang.String",
+      "description": "AWS region used in the SigV4 credential scope. Uses the default AWS region provider chain when omitted."
+    },
+    {
+      "name": "spring.ai.mcp.client.authorization.aws.connections.*.service-name",
+      "type": "java.lang.String",
+      "description": "AWS SigV4 service signing name.",
+      "defaultValue": "bedrock-agentcore"
+    },
+    {
+      "name": "spring.ai.mcp.client.authorization.aws.connections.*.allow-insecure-http",
+      "type": "java.lang.Boolean",
+      "description": "Whether SigV4 credentials may be sent over clear-text HTTP. Enable only for trusted local tests.",
+      "defaultValue": false
+    }
+  ]
+}
+

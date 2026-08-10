@@ -1,0 +1,17 @@
+.gradle/
+build/
+out/
+bin/
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+.classpath
+.project
+.settings/
+.vscode/

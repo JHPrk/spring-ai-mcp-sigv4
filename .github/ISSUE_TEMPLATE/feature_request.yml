@@ -1,0 +1,20 @@
+name: Feature request
+description: Propose an API, configuration, compatibility, or integration improvement.
+title: ""
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What limitation or use case should be addressed?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Include compatibility and security implications.
+    validations:
+      required: true
+

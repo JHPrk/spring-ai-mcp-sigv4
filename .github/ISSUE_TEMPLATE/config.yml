@@ -1,0 +1,6 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Spring AI questions
+    url: https://github.com/spring-projects/spring-ai/discussions
+    about: Ask general Spring AI questions in the official discussion forum.
+

@@ -1,0 +1,46 @@
+[versions]
+spring-ai = "2.0.0"
+aws-sdk = "2.42.34"
+spring-boot = "4.1.0"
+spring-dependency-management = "1.1.7"
+spring-javaformat = "0.0.47"
+errorprone-plugin = "5.1.0"
+errorprone = "2.42.0"
+nullaway = "0.13.4"
+checkstyle = "9.3"
+jspecify = "1.0.0"
+
+[libraries]
+spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "spring-ai" }
+aws-sdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "aws-sdk" }
+
+jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
+
+spring-ai-mcp = { module = "org.springframework.ai:spring-ai-mcp" }
+spring-ai-starter-mcp-client = { module = "org.springframework.ai:spring-ai-starter-mcp-client" }
+spring-ai-autoconfigure-mcp-client-common = { module = "org.springframework.ai:spring-ai-autoconfigure-mcp-client-common" }
+spring-ai-autoconfigure-mcp-client-httpclient = { module = "org.springframework.ai:spring-ai-autoconfigure-mcp-client-httpclient" }
+
+spring-boot-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure" }
+spring-boot-autoconfigure-processor = { module = "org.springframework.boot:spring-boot-autoconfigure-processor" }
+spring-boot-configuration-processor = { module = "org.springframework.boot:spring-boot-configuration-processor" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test", version.ref = "spring-boot" }
+
+aws-http-auth-aws = { module = "software.amazon.awssdk:http-auth-aws" }
+aws-auth = { module = "software.amazon.awssdk:auth" }
+aws-regions = { module = "software.amazon.awssdk:regions" }
+
+reactor-core = { module = "io.projectreactor:reactor-core" }
+reactor-test = { module = "io.projectreactor:reactor-test" }
+
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+errorprone-core = { module = "com.google.errorprone:error_prone_core", version.ref = "errorprone" }
+nullaway = { module = "com.uber.nullaway:nullaway", version.ref = "nullaway" }
+spring-javaformat-checkstyle = { module = "io.spring.javaformat:spring-javaformat-checkstyle", version.ref = "spring-javaformat" }
+checkstyle = { module = "com.puppycrawl.tools:checkstyle", version.ref = "checkstyle" }
+
+[plugins]
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "spring-dependency-management" }
+spring-javaformat = { id = "io.spring.javaformat", version.ref = "spring-javaformat" }
+errorprone = { id = "net.ltgt.errorprone", version.ref = "errorprone-plugin" }

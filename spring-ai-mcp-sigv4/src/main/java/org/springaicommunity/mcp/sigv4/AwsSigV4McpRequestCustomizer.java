@@ -1,0 +1,131 @@
+/*
+ * Copyright 2026-present the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.springaicommunity.mcp.sigv4;
+
+import java.net.URI;
+import java.net.http.HttpRequest;
+import java.time.Clock;
+
+import io.modelcontextprotocol.client.transport.customizer.McpAsyncHttpClientRequestCustomizer;
+import io.modelcontextprotocol.common.McpTransportContext;
+import org.jspecify.annotations.Nullable;
+import org.reactivestreams.Publisher;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.http.ContentStreamProvider;
+import software.amazon.awssdk.http.auth.aws.signer.AwsV4FamilyHttpSigner;
+import software.amazon.awssdk.http.auth.aws.signer.AwsV4HttpSigner;
+import software.amazon.awssdk.http.auth.spi.signer.HttpSigner;
+import software.amazon.awssdk.http.auth.spi.signer.SignedRequest;
+import software.amazon.awssdk.regions.Region;
+
+import org.springframework.util.Assert;
+
+/**
+ * Applies AWS Signature Version 4 immediately before the MCP JDK HTTP transport sends a
+ * request.
+ *
+ * <p>
+ * Credentials are resolved for each request on Reactor's bounded-elastic scheduler. The
+ * customizer does not retain credential values or signed authorization headers.
+ * </p>
+ *
+ * @since 0.1.0
+ */
+public final class AwsSigV4McpRequestCustomizer implements McpAsyncHttpClientRequestCustomizer {
+
+	private final AwsCredentialsProvider credentialsProvider;
+
+	private final Region region;
+
+	private final String serviceName;
+
+	private final URI endpoint;
+
+	private final AwsV4HttpSigner signer = AwsV4HttpSigner.create();
+
+	private final AwsV4HttpRequestAdapter requestAdapter = new AwsV4HttpRequestAdapter();
+
+	/**
+	 * Creates an MCP SigV4 request customizer.
+	 * @param credentialsProvider provider resolved for every HTTP request
+	 * @param region signing region used in the credential scope
+	 * @param serviceName signing service name, typically {@code bedrock-agentcore}
+	 * @param endpoint exact normalized MCP endpoint this customizer may sign
+	 * @since 0.1.0
+	 */
+	public AwsSigV4McpRequestCustomizer(AwsCredentialsProvider credentialsProvider, Region region, String serviceName,
+			URI endpoint) {
+		Assert.notNull(credentialsProvider, "credentialsProvider must not be null");
+		Assert.notNull(region, "region must not be null");
+		Assert.hasText(serviceName, "serviceName must not be blank");
+		Assert.notNull(endpoint, "endpoint must not be null");
+		Assert.isTrue(endpoint.isAbsolute(), "endpoint must be absolute");
+		this.credentialsProvider = credentialsProvider;
+		this.region = region;
+		this.serviceName = serviceName;
+		this.endpoint = endpoint.normalize();
+	}
+
+	@Override
+	public Publisher<HttpRequest.Builder> customize(HttpRequest.Builder builder, String method, URI endpoint,
+			@Nullable String body, McpTransportContext context) {
+		if (!supports(endpoint)) {
+			return Mono.just(builder);
+		}
+		Assert.state(builder.build().headers().firstValue("Authorization").isEmpty(),
+				"AWS SigV4 cannot be combined with another Authorization header on the same MCP connection");
+		return Mono.fromCallable(this.credentialsProvider::resolveCredentials)
+			.subscribeOn(Schedulers.boundedElastic())
+			.map(credentials -> sign(builder, method, endpoint, body, credentials));
+	}
+
+	private HttpRequest.Builder sign(HttpRequest.Builder builder, String method, URI endpoint, @Nullable String body,
+			AwsCredentials credentials) {
+		HttpRequest snapshot = builder.build();
+		var sdkRequest = this.requestAdapter.adapt(method, endpoint, snapshot.headers().map());
+		SignedRequest signedRequest = this.signer.sign(signRequest -> {
+			signRequest.identity(credentials)
+				.request(sdkRequest)
+				.putProperty(AwsV4FamilyHttpSigner.SERVICE_SIGNING_NAME, this.serviceName)
+				.putProperty(AwsV4HttpSigner.REGION_NAME, this.region.id())
+				.putProperty(HttpSigner.SIGNING_CLOCK, Clock.systemUTC());
+			if (body != null) {
+				signRequest.payload(ContentStreamProvider.fromUtf8String(body));
+			}
+		});
+		return this.requestAdapter.applyRequiredHeaders(builder, signedRequest.request().headers());
+	}
+
+	/**
+	 * Returns whether this customizer signs the given exact endpoint.
+	 * @param endpoint MCP request endpoint
+	 * @return {@code true} when the endpoint matches this customizer's signing scope
+	 * @since 0.1.0
+	 */
+	public boolean supports(URI endpoint) {
+		return this.endpoint.equals(endpoint.normalize());
+	}
+
+	@Override
+	public String toString() {
+		return "AwsSigV4McpRequestCustomizer[region=" + this.region.id() + ", serviceName=" + this.serviceName + "]";
+	}
+
+}

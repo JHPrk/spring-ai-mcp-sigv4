@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a reproducible problem in MCP SigV4 signing or auto-configuration.
+title: ""
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the observed and expected behavior without including credentials.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Library version
+    validations:
+      required: true
+  - type: input
+    id: spring-ai
+    attributes:
+      label: Spring AI and Spring Boot versions
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Redact account IDs, endpoints, and all authorization headers.
+    validations:
+      required: true
+

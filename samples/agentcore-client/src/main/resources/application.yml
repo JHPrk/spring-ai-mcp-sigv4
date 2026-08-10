@@ -1,0 +1,16 @@
+spring:
+  ai:
+    mcp:
+      client:
+        name: agentcore-client-sample
+        streamable-http:
+          connections:
+            agentcore:
+              url: ${MCP_GW_URL}
+              endpoint: ${MCP_GW_ENDPOINT:/mcp}
+        authorization:
+          aws:
+            connections:
+              agentcore:
+                region: ${AWS_REGION:ap-northeast-2}
+
