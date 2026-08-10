@@ -7,7 +7,7 @@ spring-javaformat = "0.0.47"
 errorprone-plugin = "5.1.0"
 errorprone = "2.42.0"
 nullaway = "0.13.4"
-checkstyle = "9.3"
+checkstyle = "13.9.0"
 jspecify = "1.0.0"
 
 [libraries]
