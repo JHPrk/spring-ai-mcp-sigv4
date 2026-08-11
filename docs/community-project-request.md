@@ -79,13 +79,14 @@ https://github.com/JHPrk/spring-ai-mcp-sigv4/tree/main/docs
 
 ## Preferred Packaging Method
 
-Select **Using GitHub's process with io.github.spring-ai-community as the groupId** in the issue
-form. The exact publication coordinate should be confirmed during onboarding as described under
+**Using GitHub's process with io.github.spring-ai-community as the groupId**
+
+The exact publication coordinate should be confirmed during onboarding as described under
 Additional Information.
 
 ## Commercial Relationship
 
-Leave **This project has commercial ownership/control (single-vendor)** unchecked.
+- [ ] This project has commercial ownership/control (single-vendor)
 
 ## Additional Information
 
