@@ -5,9 +5,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # These lines require Java 21, while this project intentionally validates on Java 17.
+      - dependency-name: com.google.errorprone:error_prone_core
+        versions: [">= 2.50.0"]
+      - dependency-name: com.puppycrawl.tools:checkstyle
+        versions: [">= 13.0.0"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-
