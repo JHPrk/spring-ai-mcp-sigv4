@@ -1,5 +1,9 @@
 # Spring AI upstream proposal package
 
+Use the [Spring AI Community project request](community-project-request.md) first. This document is
+the fallback issue for the Spring AI framework repository if the Community leads recommend core
+placement or a framework extension-point change.
+
 Do not open a large code PR first.
 The feature adds an AWS dependency and an authentication policy surface, so start with a focused
 enhancement issue or discussion and link this repository as the working implementation.

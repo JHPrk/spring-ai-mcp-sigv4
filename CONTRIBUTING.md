@@ -19,7 +19,13 @@ Use the Java 17.0.19 Liberica toolchain declared in `.sdkmanrc` and run:
 ```
 
 Use the focused module test task while iterating, but run the full command before opening a pull
-request. Java test classes use `*Tests`; live tests use `*IT` and remain disabled by default.
+request. Java test classes use `*Tests`; live tests use `*IT`, carry the JUnit `integration` tag,
+and remain excluded from the default `test` and `check` lifecycle. Run an explicitly configured
+live test with:
+
+```shell
+./gradlew :spring-ai-mcp-sigv4:integrationTest
+```
 
 To apply the repository's Spring Java Format rules, run:
 

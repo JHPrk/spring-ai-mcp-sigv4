@@ -11,3 +11,15 @@ dependencies {
 	testImplementation(libs.reactor.test)
 }
 
+val testSourceSet = extensions.getByType<JavaPluginExtension>().sourceSets.named("test")
+
+tasks.register<Test>("integrationTest") {
+	description = "Runs opt-in integration tests"
+	group = LifecycleBasePlugin.VERIFICATION_GROUP
+	testClassesDirs = testSourceSet.get().output.classesDirs
+	classpath = testSourceSet.get().runtimeClasspath
+	shouldRunAfter(tasks.named("test"))
+	useJUnitPlatform {
+		includeTags("integration")
+	}
+}
