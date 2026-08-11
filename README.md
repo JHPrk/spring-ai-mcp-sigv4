@@ -3,20 +3,15 @@
 AWS Signature Version 4 authentication for Spring AI MCP Streamable HTTP clients.
 It is designed for IAM-protected MCP endpoints such as Amazon Bedrock AgentCore Gateway.
 
-> This repository is a proposal-ready community extension, not an official Spring AI
-> artifact and not yet published to Maven Central.
+> This independent community extension is under review for inclusion in Spring AI Community.
+> It is not an official Spring AI artifact and is not yet published to Maven Central.
 
 ## Project status
 
-The code is already split into consumable library, auto-configuration, and starter artifacts.
-`publishToMavenLocal` produces binary, source, and Javadoc JARs plus Maven POM and Gradle module
-metadata for each published module.
-
-| Target | Current assessment | What remains |
-|---|---|---|
-| Standalone open-source library | Published for community review | Stabilize the API through external feedback before the first release |
-| Spring AI Community proposal | Ready to submit as an incubating project | Confirm project acceptance, Maven namespace ownership, and Central Portal credentials |
-| Spring AI core contribution | Ready for an enhancement discussion, not a direct code PR | Agree on module/extension-point placement, then translate the accepted slice to the upstream Maven build and conventions |
+The project was submitted to Spring AI Community for review in
+[Project Request #38](https://github.com/spring-ai-community/community/issues/38).
+It remains an independent extension while that request is under review, and its publication
+coordinates remain provisional until the hosting and release process are confirmed.
 
 The closest community precedents are `mcp-security`, which separates MCP security libraries from
 Boot integration, and `spring-ai-agentcore`, which publishes AWS-specific Spring AI modules. The
@@ -41,7 +36,7 @@ transport-level SigV4 authentication for any IAM-protected MCP Streamable HTTP e
 | Build JDK | Liberica 17.0.19+ |
 | Spring AI | 2.0.x |
 | Spring Boot | 4.1.x |
-| AWS SDK for Java | 2.42.x |
+| AWS SDK for Java | 2.51.x |
 
 See [the compatibility policy](docs/compatibility.md) before changing dependency lines.
 
@@ -182,33 +177,12 @@ The test passed against a disposable IAM-authenticated AgentCore Gateway in `us-
 The `check` lifecycle enforces Spring Java Format, Spring AI-aligned Checkstyle, Java compiler
 warnings, Error Prone's locale check, and NullAway in JSpecify mode for main sources.
 
-## Proposal strategy
-
-Submit the copy-ready [Spring AI Community project request](docs/community-project-request.md)
-first. If the Community leads recommend framework inclusion, open the focused Spring AI
-enhancement issue in the [upstream proposal package](docs/upstream-proposal.md). Avoid a large
-upstream code PR before that placement decision: current Spring AI `main` already has a more
-natural request-customizer collection path than the Spring AI 2.0.0 compatibility bridge in this
-repository, and the upstream implementation should target that path directly.
-
-For a public release, the remaining blockers are operational rather than library-structure work:
-
-1. obtain authorization for the final Maven group and configure Central Portal/GPG secrets;
-2. obtain maintainers' direction on official Spring AI inclusion versus a community extension;
-3. publish a release candidate and verify consumption from a clean Maven and Gradle project.
-
-The Community application is in the
-[Spring AI Community project request](docs/community-project-request.md). The alternative Spring
-AI framework issue and expected upstream PR split are in the
-[upstream proposal package](docs/upstream-proposal.md).
-
-## Project and proposal documents
+## Documentation
 
 - [Design](docs/design.md)
 - [Configuration reference](docs/configuration.md)
-- [Repository review](docs/review-report.md)
-- [Spring AI Community project request](docs/community-project-request.md)
-- [Upstream proposal package](docs/upstream-proposal.md)
+- [Compatibility policy](docs/compatibility.md)
+- [Design evolution](docs/evolution.md)
 - [Release guide](docs/releasing.md)
 - [Maintainer guide](docs/maintainer-guide.md)
 - [Contributing](CONTRIBUTING.md) and [security policy](SECURITY.md)

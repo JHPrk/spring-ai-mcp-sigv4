@@ -1,9 +1,9 @@
 # Evolution
 
-## Attached prototype
+## Initial implementation
 
 The original repository targeted Spring AI 1.1 and Spring Boot 3.5.
-That line exposed one effectively unique async HTTP request-customizer slot, so the prototype
+That line exposed one effectively unique async HTTP request-customizer slot, so the implementation
 created one global SigV4 signer and required applications to manually compose other headers.
 All AWS connection entries also had to share a region and service name.
 
