@@ -8,7 +8,7 @@ errorprone-plugin = "5.1.0"
 errorprone = "2.42.0"
 nullaway = "0.13.8"
 checkstyle = "12.3.1"
-jspecify = "1.0.0"
+jspecify = "1.0.1"
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
