@@ -25,6 +25,7 @@ import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
@@ -44,6 +45,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * {@code MCP_IAM_IT_TOOL_ARGUMENTS_JSON}.
  * </p>
  */
+@Tag("integration")
 class AgentCoreGatewaySigV4IT {
 
 	private static String gatewayUrl;

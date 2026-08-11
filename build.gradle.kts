@@ -92,6 +92,12 @@ subprojects {
 		useJUnitPlatform()
 	}
 
+	tasks.named<Test>("test") {
+		useJUnitPlatform {
+			excludeTags("integration")
+		}
+	}
+
 	tasks.withType<JavaCompile>().configureEach {
 		options.encoding = "UTF-8"
 		options.compilerArgs.addAll(listOf("-parameters", "-Xlint:all,-processing,-serial"))

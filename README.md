@@ -170,6 +170,12 @@ Manual callers that create a closeable credentials provider also own its lifecyc
 The live `AgentCoreGatewaySigV4IT` test is skipped unless `MCP_GW_URL` is set.
 When enabled, it uses the default AWS provider chain and can list and call an MCP tool.
 See [.env.example](.env.example) for all inputs.
+Run it separately from the default test lifecycle with:
+
+```shell
+./gradlew :spring-ai-mcp-sigv4:integrationTest
+```
+
 The test passed against a disposable IAM-authenticated AgentCore Gateway in `us-east-1` on
 2026-08-10, covering initialize, tools/list, tools/call, and graceful session close.
 
@@ -178,9 +184,10 @@ warnings, Error Prone's locale check, and NullAway in JSpecify mode for main sou
 
 ## Proposal strategy
 
-Submit a project request to Spring AI Community first, or open a focused Spring AI enhancement
-issue asking maintainers to choose between a community module and an upstream extension. Avoid a
-large upstream code PR before that placement decision: current Spring AI `main` already has a more
+Submit the copy-ready [Spring AI Community project request](docs/community-project-request.md)
+first. If the Community leads recommend framework inclusion, open the focused Spring AI
+enhancement issue in the [upstream proposal package](docs/upstream-proposal.md). Avoid a large
+upstream code PR before that placement decision: current Spring AI `main` already has a more
 natural request-customizer collection path than the Spring AI 2.0.0 compatibility bridge in this
 repository, and the upstream implementation should target that path directly.
 
@@ -190,7 +197,9 @@ For a public release, the remaining blockers are operational rather than library
 2. obtain maintainers' direction on official Spring AI inclusion versus a community extension;
 3. publish a release candidate and verify consumption from a clean Maven and Gradle project.
 
-The detailed, copy-ready issue text and the expected upstream PR split are in the
+The Community application is in the
+[Spring AI Community project request](docs/community-project-request.md). The alternative Spring
+AI framework issue and expected upstream PR split are in the
 [upstream proposal package](docs/upstream-proposal.md).
 
 ## Project and proposal documents
@@ -198,6 +207,7 @@ The detailed, copy-ready issue text and the expected upstream PR split are in th
 - [Design](docs/design.md)
 - [Configuration reference](docs/configuration.md)
 - [Repository review](docs/review-report.md)
+- [Spring AI Community project request](docs/community-project-request.md)
 - [Upstream proposal package](docs/upstream-proposal.md)
 - [Release guide](docs/releasing.md)
 - [Maintainer guide](docs/maintainer-guide.md)
