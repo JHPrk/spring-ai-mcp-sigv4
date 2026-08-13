@@ -127,6 +127,34 @@ one connection. SigV4 detects and rejects pre-existing `Authorization`, `X-Amz-D
 matching is case-insensitive. Other application and MCP headers remain on the request and are
 included in the signature.
 
+### Mixed authentication topologies
+
+Authentication is selected per connection, not once for the whole MCP client application. A
+mixed application can use IAM, OAuth Bearer, a fixed Bearer token, public HTTP, and stdio servers
+at the same time when each HTTP authorization customizer is restricted to its own connection name
+or exact endpoint:
+
+| Connection | Expected HTTP authorization |
+|---|---|
+| IAM Streamable HTTP | SigV4 on every request |
+| OAuth Streamable HTTP | OAuth Bearer token only |
+| Fixed-token Streamable HTTP | Configured Bearer token only |
+| Public Streamable HTTP | No `Authorization` header |
+| stdio | Not processed by HTTP request customizers |
+
+The SigV4 router resolves credentials and signs only endpoints listed under
+`authorization.aws.connections`; public and differently authenticated endpoints pass through
+unchanged. The same application-level credentials provider is shared by all IAM connections, but
+each request to each endpoint receives a new signature. AWS SDK providers may internally refresh
+or cache temporary credentials, which is separate from SigV4 request signing.
+
+This library does not configure OAuth or fixed Bearer tokens. On Spring AI 2.0.0, prefer a named
+`McpClientCustomizer<HttpClientStreamableHttpTransport.Builder>` that installs authorization only
+for its selected connection. On a Spring AI integration shape that globally collects request
+customizer beans, an OAuth/Bearer customizer must perform its own exact-endpoint routing. A global
+customizer that adds `Authorization` to the IAM endpoint is rejected intentionally instead of
+silently combining two authentication schemes.
+
 ### Sync clients and Reactor
 
 The MCP Java SDK 2.0 JDK HTTP transport is reactive internally even when Spring AI exposes a sync

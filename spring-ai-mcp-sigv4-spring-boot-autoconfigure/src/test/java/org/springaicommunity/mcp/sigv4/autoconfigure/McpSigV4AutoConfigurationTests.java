@@ -22,6 +22,7 @@ import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.sun.net.httpserver.HttpServer;
@@ -254,13 +255,21 @@ class McpSigV4AutoConfigurationTests {
 	}
 
 	@Test
-	void supportsDifferentSigningScopesForDifferentConnections() {
-		this.contextRunner
+	void signsEachAwsConnectionWithOneSharedProviderAndLeavesPublicConnectionUnsigned() {
+		AtomicInteger credentialResolutions = new AtomicInteger();
+		AwsCredentialsProvider sharedProvider = () -> {
+			credentialResolutions.incrementAndGet();
+			return AwsBasicCredentials.create("AKID", "secret");
+		};
+		new ApplicationContextRunner()
+			.withConfiguration(AutoConfigurations.of(McpSigV4AutoConfiguration.class,
+					StreamableHttpHttpClientTransportAutoConfiguration.class))
 			.withPropertyValues(TRANSPORT, ENDPOINT, AWS_REGION,
 					"spring.ai.mcp.client.streamable-http.connections.other.url=https://other.example.com",
+					"spring.ai.mcp.client.streamable-http.connections.public.url=https://public.example.com",
 					"spring.ai.mcp.client.authorization.aws.connections.other.region=us-east-1",
 					"spring.ai.mcp.client.authorization.aws.connections.other.service-name=execute-api")
-			.withBean(AwsCredentialsProvider.class, McpSigV4AutoConfigurationTests::credentialsProvider)
+			.withBean(AwsCredentialsProvider.class, () -> sharedProvider)
 			.run(context -> {
 				assertThat(context).hasNotFailed();
 				RoutingAwsSigV4McpRequestCustomizer customizer = context
@@ -269,6 +278,24 @@ class McpSigV4AutoConfigurationTests {
 					.contains("/ap-northeast-2/bedrock-agentcore/aws4_request");
 				assertThat(authorization(customizer, URI.create("https://other.example.com/mcp")))
 					.contains("/us-east-1/execute-api/aws4_request");
+				assertThat(customizedRequest(customizer, URI.create("https://public.example.com/mcp")).headers()
+					.firstValue("Authorization")).isEmpty();
+				assertThat(credentialResolutions).hasValue(2);
+
+				@SuppressWarnings("unchecked")
+				List<NamedClientMcpTransport> transports = (List<NamedClientMcpTransport>) context
+					.getBean("streamableHttpHttpClientTransports");
+				Map<String, HttpClientStreamableHttpTransport> transportsByName = transports.stream()
+					.collect(java.util.stream.Collectors.toMap(NamedClientMcpTransport::name,
+							named -> (HttpClientStreamableHttpTransport) named.transport()));
+				assertThat(ReflectionTestUtils.getField(transportsByName.get("agentcore"), "httpRequestCustomizer"))
+					.isNotNull();
+				assertThat(ReflectionTestUtils.getField(transportsByName.get("other"), "httpRequestCustomizer"))
+					.isNotNull();
+				McpAsyncHttpClientRequestCustomizer publicCustomizer = (McpAsyncHttpClientRequestCustomizer) ReflectionTestUtils
+					.getField(transportsByName.get("public"), "httpRequestCustomizer");
+				assertThat(customizedRequest(publicCustomizer, URI.create("https://public.example.com/mcp")).headers()
+					.firstValue("Authorization")).isEmpty();
 			});
 	}
 

@@ -11,6 +11,8 @@ versioning after the first stable release.
 - Connection-scoped Spring Boot auto-configuration and starter.
 - Per-connection region, service name, and secure HTTP validation.
 - Unit, local lifecycle, auto-configuration, and opt-in AgentCore integration tests.
+- Multi-connection coverage for shared AWS credentials, per-request signing, and unsigned public
+  endpoints.
 - Maven publication metadata, CI, governance, sample, and maintainer documentation.
 - Spring Java Format, Spring AI-aligned Checkstyle, Error Prone, and NullAway quality gates.
 - Gradle wrapper validation and repository guidance for maintainers and coding assistants.
