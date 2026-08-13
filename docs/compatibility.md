@@ -9,9 +9,10 @@
 AWS SDK dependencies are managed by this repository's AWS SDK BOM.
 Consumers may use a newer compatible AWS SDK v2 BOM.
 
-Spring AI 2.0.0 is supported through a named transport compatibility bridge.
-Later 2.0.x builds that natively collect MCP HTTP request customizers are detected at startup and
-use the ordered request-customizer path instead.
+Spring AI 2.0.x compatibility is capability-based. When Spring AI natively collects and composes
+MCP HTTP request customizers, the library uses that ordered native integration path. For supported
+2.0.x API shapes without that capability, the library activates a fallback named transport
+compatibility bridge. The fallback bridge is not a Spring AI 1.x compatibility layer.
 
 ## Policy
 

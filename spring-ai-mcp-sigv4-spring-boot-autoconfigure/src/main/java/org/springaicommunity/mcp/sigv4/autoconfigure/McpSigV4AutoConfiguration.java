@@ -107,8 +107,8 @@ public class McpSigV4AutoConfiguration {
 	}
 
 	/**
-	 * Installs the request customizer through the transport hook on Spring AI releases
-	 * that do not natively collect request-customizer beans.
+	 * Installs the request customizer through the fallback transport hook when the Spring
+	 * AI MCP integration shape does not natively collect request-customizer beans.
 	 * @param awsProperties AWS signing settings
 	 * @param requestCustomizer routing SigV4 request customizer
 	 * @param syncRequestCustomizers application-provided synchronous request customizers
@@ -117,15 +117,15 @@ public class McpSigV4AutoConfiguration {
 	 * @return compatibility transport customizer
 	 */
 	@Bean
-	@Conditional({ OnAnyMcpAwsConnectionCondition.class, OnLegacyMcpHttpClientIntegrationCondition.class })
-	@ConditionalOnMissingBean(LegacyMcpSigV4TransportCustomizer.class)
-	McpClientCustomizer<HttpClientStreamableHttpTransport.Builder> legacyMcpSigV4TransportCustomizer(
+	@Conditional({ OnAnyMcpAwsConnectionCondition.class, OnMissingNativeMcpRequestCustomizerSupportCondition.class })
+	@ConditionalOnMissingBean(FallbackMcpSigV4TransportCustomizer.class)
+	McpClientCustomizer<HttpClientStreamableHttpTransport.Builder> fallbackMcpSigV4TransportCustomizer(
 			McpAwsProperties awsProperties, RoutingAwsSigV4McpRequestCustomizer requestCustomizer,
 			ObjectProvider<McpSyncHttpClientRequestCustomizer> syncRequestCustomizers,
 			ObjectProvider<McpAsyncHttpClientRequestCustomizer> asyncRequestCustomizers) {
 		McpAsyncHttpClientRequestCustomizer composed = composeRequestCustomizers(requestCustomizer,
 				syncRequestCustomizers, asyncRequestCustomizers);
-		return new LegacyMcpSigV4TransportCustomizer(awsProperties.getConnections().keySet(), composed);
+		return new FallbackMcpSigV4TransportCustomizer(awsProperties.getConnections().keySet(), composed);
 	}
 
 	private static McpAsyncHttpClientRequestCustomizer composeRequestCustomizers(

@@ -30,8 +30,10 @@ import org.springframework.context.annotation.ConditionContext;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.util.ClassUtils;
 
-/** Detects Spring AI releases that do not collect HTTP request-customizer beans. */
-final class OnLegacyMcpHttpClientIntegrationCondition extends SpringBootCondition {
+/**
+ * Detects an MCP HTTP integration shape without native request-customizer composition.
+ */
+final class OnMissingNativeMcpRequestCustomizerSupportCondition extends SpringBootCondition {
 
 	private static final String AUTO_CONFIGURATION_CLASS = "org.springframework.ai.mcp.client.httpclient.autoconfigure."
 			+ "StreamableHttpHttpClientTransportAutoConfiguration";
@@ -45,14 +47,7 @@ final class OnLegacyMcpHttpClientIntegrationCondition extends SpringBootConditio
 		}
 		try {
 			Class<?> autoConfiguration = ClassUtils.forName(AUTO_CONFIGURATION_CLASS, classLoader);
-			Method factoryMethod = Arrays.stream(autoConfiguration.getDeclaredMethods())
-				.filter(method -> method.getName().equals("streamableHttpHttpClientTransports"))
-				.findFirst()
-				.orElseThrow();
-			boolean nativeRequestCustomizerSupport = Arrays.stream(factoryMethod.getGenericParameterTypes())
-				.map(Type::getTypeName)
-				.anyMatch(name -> name.contains(McpAsyncHttpClientRequestCustomizer.class.getName())
-						|| name.contains(McpSyncHttpClientRequestCustomizer.class.getName()));
+			boolean nativeRequestCustomizerSupport = hasNativeRequestCustomizerSupport(autoConfiguration);
 			if (nativeRequestCustomizerSupport) {
 				return ConditionOutcome.noMatch(message.found("native request-customizer collection").atAll());
 			}
@@ -61,6 +56,17 @@ final class OnLegacyMcpHttpClientIntegrationCondition extends SpringBootConditio
 		catch (ReflectiveOperationException ex) {
 			return ConditionOutcome.noMatch(message.because("could not inspect Spring AI HTTP auto-configuration"));
 		}
+	}
+
+	static boolean hasNativeRequestCustomizerSupport(Class<?> autoConfiguration) {
+		Method factoryMethod = Arrays.stream(autoConfiguration.getDeclaredMethods())
+			.filter(method -> method.getName().equals("streamableHttpHttpClientTransports"))
+			.findFirst()
+			.orElseThrow();
+		return Arrays.stream(factoryMethod.getGenericParameterTypes())
+			.map(Type::getTypeName)
+			.anyMatch(name -> name.contains(McpAsyncHttpClientRequestCustomizer.class.getName())
+					|| name.contains(McpSyncHttpClientRequestCustomizer.class.getName()));
 	}
 
 }

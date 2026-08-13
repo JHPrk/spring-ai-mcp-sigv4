@@ -25,21 +25,31 @@ import org.springframework.ai.mcp.customizer.McpClientCustomizer;
 import org.springframework.util.Assert;
 
 /**
- * Installs SigV4 through the named transport hook used by Spring AI 2.0.0.
+ * Fallback bridge that installs the composed MCP request customizers through Spring AI's
+ * named transport hook.
  *
  * <p>
- * This bridge is not registered when Spring AI natively collects HTTP request-customizer
- * beans.
+ * This is not a Spring AI 1.x compatibility layer. It is used only within the supported
+ * Spring AI 2.0.x line when the detected MCP HTTP integration shape does not natively
+ * collect and compose request-customizer beans. The auto-configuration composes
+ * application-provided synchronous and asynchronous request customizers, appends the
+ * routing SigV4 customizer, and supplies that composition to this bridge.
+ * </p>
+ *
+ * <p>
+ * When native request-customizer composition is available, this bridge is not registered.
+ * Its presence therefore expresses a missing native capability, not support for Spring AI
+ * 1.x.
  * </p>
  */
-final class LegacyMcpSigV4TransportCustomizer
+final class FallbackMcpSigV4TransportCustomizer
 		implements McpClientCustomizer<HttpClientStreamableHttpTransport.Builder> {
 
 	private final Set<String> connectionNames;
 
 	private final McpAsyncHttpClientRequestCustomizer requestCustomizer;
 
-	LegacyMcpSigV4TransportCustomizer(Set<String> connectionNames,
+	FallbackMcpSigV4TransportCustomizer(Set<String> connectionNames,
 			McpAsyncHttpClientRequestCustomizer requestCustomizer) {
 		Assert.notEmpty(connectionNames, "connectionNames must not be empty");
 		this.connectionNames = Set.copyOf(connectionNames);

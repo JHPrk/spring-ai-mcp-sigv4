@@ -39,6 +39,8 @@ transport-level SigV4 authentication for any IAM-protected MCP Streamable HTTP e
 | AWS SDK for Java | 2.51.x |
 
 See [the compatibility policy](docs/compatibility.md) before changing dependency lines.
+The `0.1.x` line does not target Spring AI 1.1.x; demand for that baseline would be handled on a
+separate maintenance line rather than through the Spring AI 2.0.x fallback integration path.
 
 ## Modules
 
@@ -134,10 +136,11 @@ For trusted local tests only, set this per connection:
 spring.ai.mcp.client.authorization.aws.connections.local.allow-insecure-http: true
 ```
 
-On Spring AI versions that natively collect ordered MCP request customizers, SigV4 runs last so
-headers added earlier are included in the canonical request.
-Spring AI 2.0.0 uses a named transport compatibility bridge. The bridge adapts ordered sync
-request-customizer beans to async, combines them with ordered async beans, and signs last. A
+On supported Spring AI 2.0.x API shapes that natively collect ordered MCP request customizers,
+SigV4 runs last so headers added earlier are included in the canonical request.
+Spring AI 2.0.x API shapes without native request-customizer composition use a capability-detected
+fallback transport bridge. The bridge adapts ordered sync request-customizer beans to async,
+combines them with ordered async beans, and signs last. A
 separate transport customizer that directly calls `httpRequestCustomizer(...)` or
 `asyncHttpRequestCustomizer(...)` still targets the same write-only builder slot and must install
 one explicitly composed delegate.
