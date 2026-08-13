@@ -17,6 +17,9 @@ versioning after the first stable release.
 
 ### Fixed
 
+- Reject pre-existing SigV4-owned headers case-insensitively before credential resolution,
+  preventing stale session tokens or signing metadata from surviving request signing.
+- Remove configured endpoint URLs from duplicate-route and conflicting-scope diagnostics.
 - Declared bodyless MCP request payloads as nullable under the package-level JSpecify contract.
 - Corrected and completed public JavaDoc for routing and configuration property types.
 - Preserved the AWS signer's `X-Amz-Content-Sha256` header when it is part of `SignedHeaders`,

@@ -163,7 +163,7 @@ public class McpSigV4AutoConfiguration {
 			SigningScope scope = new SigningScope(region, aws.getServiceName());
 			SigningScope existing = scopes.putIfAbsent(endpoint, scope);
 			Assert.state(existing == null || existing.equals(scope),
-					() -> "MCP endpoint '" + endpoint + "' has conflicting AWS signing scopes");
+					"MCP connections resolving to the same endpoint have conflicting AWS signing scopes");
 			if (existing == null) {
 				delegates.put(endpoint,
 						new AwsSigV4McpRequestCustomizer(credentialsProvider, region, aws.getServiceName(), endpoint));

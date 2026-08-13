@@ -39,6 +39,7 @@ Spring AI named MCP connection
   -> RoutingAwsSigV4McpRequestCustomizer
        -> exact endpoint configured? no: unchanged request
        -> yes: AwsSigV4McpRequestCustomizer
+            -> SigV4-owned header present? yes: reject
             -> resolve credentials on boundedElastic
             -> adapt JDK request metadata to SdkHttpRequest
             -> sign body and headers with AwsV4HttpSigner
@@ -46,7 +47,7 @@ Spring AI named MCP connection
   -> JDK HttpClient
 ```
 
-Credentials are resolved for each request so rotating or temporary credentials remain valid.
+Credentials are resolved for each request so temporary credentials can refresh normally.
 Blocking provider-chain work is isolated on Reactor's bounded-elastic scheduler.
 Credential values and generated authorization headers are not retained or logged.
 The auto-configured default credentials provider is a Spring bean, so its closeable resources are
@@ -75,8 +76,9 @@ fail startup.
 - Public/unconfigured endpoints are intentionally left unsigned.
 - Both routed and directly installed signers are bound to exact normalized endpoint URIs.
 - Diagnostic strings report counts and scopes but never credentials or endpoint URLs.
-- A pre-existing `Authorization` header is rejected so OAuth and SigV4 cannot silently overwrite
-  each other on one endpoint.
+- Pre-existing SigV4-owned headers (`Authorization`, `X-Amz-Date`, `X-Amz-Security-Token`, and
+  `X-Amz-Content-Sha256`) are rejected case-insensitively before credential resolution. This
+  prevents both competing authorization and stale SigV4 metadata.
 
 ## Upstream shape
 

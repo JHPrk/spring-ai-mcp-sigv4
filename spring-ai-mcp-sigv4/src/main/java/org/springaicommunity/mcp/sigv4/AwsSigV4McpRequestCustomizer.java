@@ -19,6 +19,8 @@ package org.springaicommunity.mcp.sigv4;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.time.Clock;
+import java.util.Locale;
+import java.util.Set;
 
 import io.modelcontextprotocol.client.transport.customizer.McpAsyncHttpClientRequestCustomizer;
 import io.modelcontextprotocol.common.McpTransportContext;
@@ -46,9 +48,18 @@ import org.springframework.util.Assert;
  * customizer does not retain credential values or signed authorization headers.
  * </p>
  *
+ * <p>
+ * Requests that already contain a SigV4-owned header are rejected before credentials are
+ * resolved. Other application and MCP headers are preserved and included in the
+ * signature.
+ * </p>
+ *
  * @since 0.1.0
  */
 public final class AwsSigV4McpRequestCustomizer implements McpAsyncHttpClientRequestCustomizer {
+
+	static final Set<String> SIGV4_OWNED_HEADERS = Set.of("authorization", "x-amz-date", "x-amz-security-token",
+			"x-amz-content-sha256");
 
 	private final AwsCredentialsProvider credentialsProvider;
 
@@ -89,8 +100,14 @@ public final class AwsSigV4McpRequestCustomizer implements McpAsyncHttpClientReq
 		if (!supports(endpoint)) {
 			return Mono.just(builder);
 		}
-		Assert.state(builder.build().headers().firstValue("Authorization").isEmpty(),
-				"AWS SigV4 cannot be combined with another Authorization header on the same MCP connection");
+		boolean hasSigV4OwnedHeader = builder.build()
+			.headers()
+			.map()
+			.keySet()
+			.stream()
+			.map(name -> name.toLowerCase(Locale.ROOT))
+			.anyMatch(SIGV4_OWNED_HEADERS::contains);
+		Assert.state(!hasSigV4OwnedHeader, "AWS SigV4-owned headers must not be set before signing");
 		return Mono.fromCallable(this.credentialsProvider::resolveCredentials)
 			.subscribeOn(Schedulers.boundedElastic())
 			.map(credentials -> sign(builder, method, endpoint, body, credentials));

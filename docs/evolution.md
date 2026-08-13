@@ -42,3 +42,10 @@ The Spring AI 2.0.0 compatibility bridge must use that hook, so it first collect
 request-customizer beans into one `DelegatingMcpAsyncHttpClientRequestCustomizer` and appends
 SigV4 last. Direct mutations made by other named transport customizers cannot be inspected because
 the builder exposes setters but no getter; those remain an explicit-composition case.
+
+## Future consideration
+
+Connection-scoped credentials-provider selection may be reconsidered if Community feedback shows
+a concrete multi-principal requirement. The current API intentionally shares one application-level
+`AwsCredentialsProvider`; no resolver SPI or qualifier-based connection API is defined in the
+`0.1.x` line.
