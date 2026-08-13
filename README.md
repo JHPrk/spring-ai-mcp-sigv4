@@ -115,6 +115,10 @@ such as AgentCore Gateway. Reconnect the MCP session after an intentional princi
 Only the `agentcore` endpoint is signed.
 Other configured MCP connections remain unchanged, and different AWS connections may use
 different regions or service names.
+Applications may also contain OAuth, fixed Bearer, public HTTP, and stdio connections. Keep each
+OAuth/Bearer customizer scoped to its own connection name or exact endpoint; stdio never enters the
+HTTP signing pipeline. See
+[mixed authentication topologies](docs/configuration.md#mixed-authentication-topologies).
 The signer owns `Authorization`, `X-Amz-Date`, `X-Amz-Content-Sha256`, and
 `X-Amz-Security-Token`. If any of those headers are already present, case-insensitively, signing
 fails before credentials are resolved. This prevents stale signing metadata from surviving a
