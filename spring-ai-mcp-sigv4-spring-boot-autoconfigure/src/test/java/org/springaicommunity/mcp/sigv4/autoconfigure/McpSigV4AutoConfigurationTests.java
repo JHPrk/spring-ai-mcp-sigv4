@@ -358,7 +358,8 @@ class McpSigV4AutoConfigurationTests {
 			.run(context -> {
 				assertThat(context).hasFailed();
 				assertThat(context.getStartupFailure()).hasRootCauseMessage(
-						"MCP endpoint 'https://gw.example.com/base/mcp' has conflicting AWS signing scopes");
+						"MCP connections resolving to the same endpoint have conflicting AWS signing scopes");
+				assertThat(context.getStartupFailure()).hasMessageNotContaining("gw.example.com");
 			});
 	}
 

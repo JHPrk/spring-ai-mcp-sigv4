@@ -58,7 +58,7 @@ public final class RoutingAwsSigV4McpRequestCustomizer implements McpAsyncHttpCl
 			Assert.notNull(customizer, "customizer must not be null");
 			Assert.isTrue(customizer.supports(endpoint), "customizer endpoint must match its routing endpoint");
 			AwsSigV4McpRequestCustomizer existing = normalized.putIfAbsent(endpoint.normalize(), customizer);
-			Assert.state(existing == null, () -> "duplicate MCP endpoint: " + endpoint);
+			Assert.state(existing == null, "duplicate normalized MCP endpoint");
 		});
 		this.delegates = Map.copyOf(normalized);
 	}

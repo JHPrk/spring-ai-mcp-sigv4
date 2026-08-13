@@ -64,17 +64,28 @@ be identical.
 
 ## Credentials and region
 
-If the application exposes exactly one `AwsCredentialsProvider` bean, it is reused.
-With no bean, auto-configuration contributes a `DefaultCredentialsProvider` bean and Spring closes
-it with the application context.
-Multiple provider beans cause the standard Spring single-bean resolution failure; expose one
-selected provider for MCP instead.
+All entries under `authorization.aws.connections` share one application-level
+`AwsCredentialsProvider`. A connection may select its own endpoint, region, and service name, but
+this release does not provide connection-scoped credentials-provider selection.
+
+If the application exposes exactly one `AwsCredentialsProvider` bean, it is reused by every
+AWS-authenticated MCP connection. With no bean, auto-configuration contributes a
+`DefaultCredentialsProvider` bean and Spring closes it with the application context. Multiple
+equally eligible provider beans cause the standard Spring single-bean resolution failure at
+startup; expose one selected provider for MCP instead.
 
 An explicit `region` property has priority.
 When absent, an application-provided `AwsRegionProvider` or an auto-configured
 `DefaultAwsRegionProviderChain` resolves the region.
 The default credentials and region beans are conditional on at least one AWS-authenticated MCP
 connection and back off when the application supplies the corresponding provider type.
+
+The provider is resolved for every request. This supports normal AWS temporary-credential refresh
+when the refreshed credentials continue to represent the same IAM principal. Changing the
+effective IAM principal during an established stateful MCP session is an identity transition, not
+a credential refresh. The library does not guarantee session continuity across that transition;
+reconnect the client when intentionally changing principals, especially for IAM-authenticated
+stateful endpoints such as AgentCore Gateway.
 
 ## Request customizer composition
 
@@ -111,8 +122,10 @@ last-writer-wins on both integration shapes. Prefer sync or async request-custom
 Spring AI or this library composes. If a direct transport customizer is unavoidable, it must
 install one explicitly composed delegate.
 Two customizers that both own the `Authorization` header, such as OAuth and SigV4, must not share
-one connection.
-SigV4 detects and rejects a pre-existing `Authorization` header before resolving credentials.
+one connection. SigV4 detects and rejects pre-existing `Authorization`, `X-Amz-Date`,
+`X-Amz-Security-Token`, and `X-Amz-Content-Sha256` headers before resolving credentials. Header
+matching is case-insensitive. Other application and MCP headers remain on the request and are
+included in the signature.
 
 ### Sync clients and Reactor
 

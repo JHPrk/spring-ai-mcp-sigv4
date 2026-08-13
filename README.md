@@ -98,18 +98,28 @@ spring:
                 # service-name: bedrock-agentcore
 ```
 
-Credentials come from a single application `AwsCredentialsProvider` bean when present.
-Otherwise, the auto-configuration creates a `DefaultCredentialsProvider` bean that Spring closes
-with the application context.
+All AWS-authenticated MCP connections share one application-level `AwsCredentialsProvider`.
+Connections may use different endpoints, regions, and service names, but this release does not
+select a credentials provider per connection. When one provider bean is present it is reused;
+otherwise, auto-configuration creates a `DefaultCredentialsProvider` bean that Spring closes with
+the application context. Multiple equally eligible provider beans cause Spring's standard
+single-bean resolution failure at startup.
 If `region` is omitted, a lifecycle-scoped `DefaultAwsRegionProviderChain` bean resolves it.
 Neither default bean is created when no AWS-authenticated MCP connection is configured.
+
+Credentials are resolved for every request, so normal temporary-credential refresh for the same
+IAM principal is supported. Replacing the provider's effective IAM principal during a stateful MCP
+session is different from credential refresh; session continuity is not guaranteed for endpoints
+such as AgentCore Gateway. Reconnect the MCP session after an intentional principal change.
 
 Only the `agentcore` endpoint is signed.
 Other configured MCP connections remain unchanged, and different AWS connections may use
 different regions or service names.
-The signer copies only the headers required by the signed request: `Authorization`, `X-Amz-Date`,
-`X-Amz-Content-Sha256` when the signer adds a payload hash, and `X-Amz-Security-Token` for temporary
-credentials. It does not replace application headers with the AWS signer's complete header map.
+The signer owns `Authorization`, `X-Amz-Date`, `X-Amz-Content-Sha256`, and
+`X-Amz-Security-Token`. If any of those headers are already present, case-insensitively, signing
+fails before credentials are resolved. This prevents stale signing metadata from surviving a
+request. Other application and MCP headers are preserved and signed; the signer does not replace
+them with the AWS signer's complete header map.
 
 ## Security defaults
 
@@ -128,8 +138,8 @@ separate transport customizer that directly calls `httpRequestCustomizer(...)` o
 `asyncHttpRequestCustomizer(...)` still targets the same write-only builder slot and must install
 one explicitly composed delegate.
 Do not combine OAuth Bearer authentication and SigV4 on the same connection because both write
-the `Authorization` header.
-The signer rejects a pre-existing `Authorization` header instead of silently replacing it.
+the `Authorization` header. The signer rejects every pre-existing SigV4-owned header instead of
+silently replacing it.
 
 Spring AI's sync MCP client does not imply a Reactor-free HTTP transport. MCP Java SDK 2.0 adapts
 the sync request customizer to its internal async pipeline and already brings Reactor through

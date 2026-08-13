@@ -29,6 +29,7 @@ import software.amazon.awssdk.regions.Region;
 import org.springframework.core.Ordered;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RoutingAwsSigV4McpRequestCustomizerTests {
 
@@ -62,6 +63,20 @@ class RoutingAwsSigV4McpRequestCustomizerTests {
 	void diagnosticStringDoesNotExposeEndpoints() {
 		assertThat(this.customizer.toString()).isEqualTo("RoutingAwsSigV4McpRequestCustomizer[endpointCount=1]")
 			.doesNotContain("gateway.example.com");
+	}
+
+	@Test
+	void duplicateEndpointFailureDoesNotExposeEndpoint() {
+		URI equivalentEndpoint = URI.create("https://private.example.com/base/../mcp");
+		URI normalizedEndpoint = equivalentEndpoint.normalize();
+		var signer = new AwsSigV4McpRequestCustomizer(() -> AwsBasicCredentials.create("AKID", "secret"),
+				Region.US_EAST_1, "bedrock-agentcore", normalizedEndpoint);
+
+		assertThatThrownBy(() -> new RoutingAwsSigV4McpRequestCustomizer(
+				Map.of(equivalentEndpoint, signer, normalizedEndpoint, signer)))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessage("duplicate normalized MCP endpoint")
+			.hasMessageNotContaining("private.example.com");
 	}
 
 	private HttpRequest customize(URI endpoint) {

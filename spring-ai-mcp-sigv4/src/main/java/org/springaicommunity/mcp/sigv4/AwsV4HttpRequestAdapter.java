@@ -21,7 +21,6 @@ import java.net.http.HttpRequest;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 import software.amazon.awssdk.http.SdkHttpMethod;
 import software.amazon.awssdk.http.SdkHttpRequest;
@@ -36,9 +35,6 @@ import software.amazon.awssdk.http.SdkHttpRequest;
  * </p>
  */
 final class AwsV4HttpRequestAdapter {
-
-	private static final Set<String> SIGV4_REQUIRED_HEADERS = Set.of("authorization", "x-amz-date",
-			"x-amz-security-token", "x-amz-content-sha256");
 
 	/**
 	 * Converts an HTTP method, URI, and headers without changing their values.
@@ -61,7 +57,8 @@ final class AwsV4HttpRequestAdapter {
 	 */
 	HttpRequest.Builder applyRequiredHeaders(HttpRequest.Builder builder, Map<String, List<String>> signedHeaders) {
 		signedHeaders.forEach((name, values) -> {
-			if (SIGV4_REQUIRED_HEADERS.contains(name.toLowerCase(Locale.ROOT)) && !values.isEmpty()) {
+			if (AwsSigV4McpRequestCustomizer.SIGV4_OWNED_HEADERS.contains(name.toLowerCase(Locale.ROOT))
+					&& !values.isEmpty()) {
 				builder.setHeader(name, values.get(0));
 			}
 		});

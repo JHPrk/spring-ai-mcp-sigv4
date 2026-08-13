@@ -34,6 +34,8 @@ import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTranspor
 import io.modelcontextprotocol.common.McpTransportContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
@@ -95,27 +97,55 @@ class AwsSigV4McpRequestCustomizerTests {
 	void shouldPreserveMcpHeadersWhenSigning() {
 		URI endpoint = URI.create("https://example.com/mcp");
 		HttpRequest.Builder builder = requestBuilder("POST", endpoint, "{}").header("Content-Type", "application/json")
+			.header("Accept", "application/json")
 			.header("Mcp-Protocol-Version", "2025-06-18")
 			.header("Mcp-Session-Id", "safe-session-id")
-			.header("X-Amz-Date", "old");
+			.header("Last-Event-Id", "event-1")
+			.header("X-Custom-Header", "custom-value");
 
 		HttpRequest request = customize(builder, "POST", endpoint, "{}", () -> BASIC_CREDENTIALS);
 
 		assertThat(request.headers().firstValue("Content-Type")).contains("application/json");
+		assertThat(request.headers().firstValue("Accept")).contains("application/json");
 		assertThat(request.headers().firstValue("Mcp-Protocol-Version")).contains("2025-06-18");
 		assertThat(request.headers().firstValue("Mcp-Session-Id")).contains("safe-session-id");
+		assertThat(request.headers().firstValue("Last-Event-Id")).contains("event-1");
+		assertThat(request.headers().firstValue("X-Custom-Header")).contains("custom-value");
 		assertThat(request.headers().allValues("Authorization")).hasSize(1);
-		assertThat(request.headers().firstValue("X-Amz-Date")).isPresent().get().isNotEqualTo("old");
+		assertThat(authorization(request)).contains("accept", "content-type", "last-event-id", "mcp-protocol-version",
+				"mcp-session-id", "x-custom-header");
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "Authorization", "X-Amz-Date", "X-Amz-Security-Token", "X-Amz-Content-Sha256" })
+	void shouldRejectPreexistingSigV4OwnedHeader(String headerName) {
+		URI endpoint = URI.create("https://example.com/mcp");
+		HttpRequest.Builder builder = requestBuilder("POST", endpoint, "{}").header(headerName, "sensitive-value");
+		AtomicInteger credentialResolutions = new AtomicInteger();
+		AwsCredentialsProvider provider = () -> {
+			credentialResolutions.incrementAndGet();
+			return BASIC_CREDENTIALS;
+		};
+
+		assertThatThrownBy(() -> customize(builder, "POST", endpoint, "{}", provider))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessage("AWS SigV4-owned headers must not be set before signing")
+			.hasMessageNotContaining("sensitive-value")
+			.hasMessageNotContaining("AKIDEXAMPLE")
+			.hasMessageNotContaining("test-secret-key-value");
+		assertThat(credentialResolutions).hasValue(0);
 	}
 
 	@Test
-	void shouldRejectAnotherAuthorizationMechanismOnTheSameEndpoint() {
+	void shouldRejectSigV4OwnedHeaderCaseInsensitively() {
 		URI endpoint = URI.create("https://example.com/mcp");
-		HttpRequest.Builder builder = requestBuilder("POST", endpoint, "{}").header("Authorization", "Bearer token");
+		HttpRequest.Builder builder = requestBuilder("GET", endpoint, null).header("x-AmZ-sEcUrItY-ToKeN",
+				"stale-token");
 
-		assertThatThrownBy(() -> customize(builder, "POST", endpoint, "{}", () -> BASIC_CREDENTIALS))
+		assertThatThrownBy(() -> customize(builder, "GET", endpoint, null, () -> BASIC_CREDENTIALS))
 			.isInstanceOf(IllegalStateException.class)
-			.hasMessage("AWS SigV4 cannot be combined with another Authorization header on the same MCP connection");
+			.hasMessage("AWS SigV4-owned headers must not be set before signing")
+			.hasMessageNotContaining("stale-token");
 	}
 
 	@Test
