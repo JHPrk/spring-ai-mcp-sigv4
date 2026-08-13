@@ -11,8 +11,10 @@ All AWS connection entries also had to share a region and service name.
 
 Spring AI 2.0.0 moved named transport customization to `McpClientCustomizer<Builder>`.
 Current upstream additionally collects ordered sync and async HTTP request-customizer beans.
-The library contributes one routing request customizer and a capability-detected 2.0.0 transport
-bridge, avoiding the bridge on the newer upstream shape.
+The library contributes one routing request customizer and, within the supported Spring AI 2.0.x
+line, activates a capability-detected fallback transport bridge only when native composition is
+missing. The fallback is not a Spring AI 1.x support path and is avoided whenever the native
+request-customizer capability is present.
 
 Consequences:
 
@@ -38,10 +40,11 @@ contributor API would duplicate framework behavior.
 
 Calling `asyncHttpRequestCustomizer(...)` from a named transport customizer replaces the
 customizer Spring AI already installed.
-The Spring AI 2.0.0 compatibility bridge must use that hook, so it first collects sync and async
-request-customizer beans into one `DelegatingMcpAsyncHttpClientRequestCustomizer` and appends
-SigV4 last. Direct mutations made by other named transport customizers cannot be inspected because
-the builder exposes setters but no getter; those remain an explicit-composition case.
+The fallback compatibility bridge for the applicable Spring AI 2.0.x API shape must use that hook,
+so it first collects sync and async request-customizer beans into one
+`DelegatingMcpAsyncHttpClientRequestCustomizer` and appends SigV4 last. Direct mutations made by
+other named transport customizers cannot be inspected because the builder exposes setters but no
+getter; those remain an explicit-composition case.
 
 ## Future consideration
 

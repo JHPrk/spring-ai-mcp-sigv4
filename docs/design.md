@@ -20,8 +20,8 @@ autoconfigure
   McpAwsProperties
   McpSigV4AutoConfiguration
   OnAnyMcpAwsConnectionCondition
-  OnLegacyMcpHttpClientIntegrationCondition
-  LegacyMcpSigV4TransportCustomizer
+  OnMissingNativeMcpRequestCustomizerSupportCondition
+  FallbackMcpSigV4TransportCustomizer
 
 starter
   core + autoconfigure + official Spring AI MCP client starter
@@ -57,10 +57,11 @@ released with the application context.
 
 Spring AI 2.0.0 exposes a named transport builder customizer, while current upstream also composes
 request-customizer beans globally.
-The library uses capability detection: it installs a named transport bridge only for the 2.0.0
-shape, then backs that bridge off when native request-customizer collection is present. On 2.0.0,
-the bridge converts ordered sync request customizers to async, adds ordered async customizers, and
-appends SigV4 to an MCP SDK delegating customizer.
+The library uses capability detection: it installs a fallback named transport bridge only when
+native request-customizer composition is absent, then backs that bridge off when the native
+capability is present. The fallback bridge converts ordered sync request customizers to async,
+adds ordered async customizers, and appends SigV4 to an MCP SDK delegating customizer. It is a
+Spring AI 2.0.x integration path, not a Spring AI 1.x compatibility layer.
 Routing by the actual endpoint passed to the request hook supports different signing scopes per
 connection without signing public endpoints.
 

@@ -115,7 +115,7 @@ class McpSigV4AutoConfigurationTests {
 	}
 
 	@Test
-	void isAppliedBySpringAiHttpClientTransportAutoConfiguration() {
+	void activatesFallbackBridgeWhenNativeCompositionIsUnavailable() {
 		new ApplicationContextRunner()
 			.withConfiguration(AutoConfigurations.of(McpSigV4AutoConfiguration.class,
 					StreamableHttpHttpClientTransportAutoConfiguration.class))
@@ -123,6 +123,7 @@ class McpSigV4AutoConfigurationTests {
 			.withBean(AwsCredentialsProvider.class, McpSigV4AutoConfigurationTests::credentialsProvider)
 			.run(context -> {
 				assertThat(context).hasNotFailed();
+				assertThat(context).hasSingleBean(FallbackMcpSigV4TransportCustomizer.class);
 				@SuppressWarnings("unchecked")
 				List<NamedClientMcpTransport> transports = (List<NamedClientMcpTransport>) context
 					.getBean("streamableHttpHttpClientTransports");
@@ -139,7 +140,7 @@ class McpSigV4AutoConfigurationTests {
 	}
 
 	@Test
-	void legacyBridgeComposesSyncAndAsyncCustomizersBeforeSigV4() {
+	void fallbackBridgeComposesSyncAndAsyncCustomizersBeforeSigV4() {
 		new ApplicationContextRunner()
 			.withConfiguration(AutoConfigurations.of(McpSigV4AutoConfiguration.class,
 					StreamableHttpHttpClientTransportAutoConfiguration.class))
@@ -167,7 +168,7 @@ class McpSigV4AutoConfigurationTests {
 	}
 
 	@Test
-	void legacyBridgeComposesSyncOnlyCustomizerBeforeSigV4() {
+	void fallbackBridgeComposesSyncOnlyCustomizerBeforeSigV4() {
 		runWithTransport(SyncOnlyCustomizerConfiguration.class, installed -> {
 			assertThat(installed).isInstanceOf(DelegatingMcpAsyncHttpClientRequestCustomizer.class);
 			HttpRequest request = customizedRequest(installed, URI.create("https://gw.example.com/base/mcp"));
@@ -178,7 +179,7 @@ class McpSigV4AutoConfigurationTests {
 	}
 
 	@Test
-	void legacyBridgeComposesAsyncOnlyCustomizerBeforeSigV4() {
+	void fallbackBridgeComposesAsyncOnlyCustomizerBeforeSigV4() {
 		runWithTransport(AsyncOnlyCustomizerConfiguration.class, installed -> {
 			assertThat(installed).isInstanceOf(DelegatingMcpAsyncHttpClientRequestCustomizer.class);
 			HttpRequest request = customizedRequest(installed, URI.create("https://gw.example.com/base/mcp"));
