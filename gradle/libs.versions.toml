@@ -1,6 +1,6 @@
 [versions]
 spring-ai = "2.0.0"
-aws-sdk = "2.51.3"
+aws-sdk = "2.54.3"
 spring-boot = "4.1.1"
 spring-dependency-management = "1.1.7"
 spring-javaformat = "0.0.48"
