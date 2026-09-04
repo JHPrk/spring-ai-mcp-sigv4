@@ -94,6 +94,23 @@ class AwsSigV4McpRequestCustomizerTests {
 	}
 
 	@Test
+	void shouldLeavePropagationHeadersOnWireWithoutSigningThem() {
+		URI endpoint = URI.create("https://example.com/mcp");
+		HttpRequest.Builder builder = requestBuilder("POST", endpoint, "{}")
+			.header("TraceParent", "parent-context")
+			.header("TraceState", "test=value")
+			.header("Baggage", "test=value")
+			.header("X-Custom-Header", "stable");
+		HttpRequest request = customize(builder, "POST", endpoint, "{}", () -> BASIC_CREDENTIALS);
+		assertThat(request.headers().firstValue("traceparent")).contains("parent-context");
+		assertThat(request.headers().firstValue("tracestate")).contains("test=value");
+		assertThat(request.headers().firstValue("baggage")).contains("test=value");
+		String signedHeaders = authorization(request).split("SignedHeaders=", 2)[1].split(",", 2)[0];
+		assertThat(signedHeaders).doesNotContain("traceparent", "tracestate", "baggage");
+		assertThat(signedHeaders).contains("x-custom-header");
+	}
+
+	@Test
 	void shouldPreserveMcpHeadersWhenSigning() {
 		URI endpoint = URI.create("https://example.com/mcp");
 		HttpRequest.Builder builder = requestBuilder("POST", endpoint, "{}").header("Content-Type", "application/json")
