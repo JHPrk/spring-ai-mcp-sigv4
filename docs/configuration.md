@@ -285,9 +285,25 @@ short-lived credentials and test inputs documented in `.env.example`, with JDK t
 ```shell
 JAVA_TOOL_OPTIONS='-javaagent:/absolute/path/aws-opentelemetry-agent.jar' \
 OTEL_TRACES_EXPORTER=none OTEL_METRICS_EXPORTER=none OTEL_LOGS_EXPORTER=none \
+OTEL_AWS_APPLICATION_SIGNALS_ENABLED=false OTEL_SDK_DISABLED=false \
+OTEL_TRACES_SAMPLER=always_on OTEL_PROPAGATORS=tracecontext,baggage \
 OTEL_INSTRUMENTATION_JAVA_HTTP_CLIENT_ENABLED=true \
+OTEL_INSTRUMENTATION_OPENTELEMETRY_API_ENABLED=true MCP_IAM_IT_TRACING=true \
 ./gradlew --no-daemon :spring-ai-mcp-sigv4:integrationTest --rerun-tasks
 ```
+
+`MCP_IAM_IT_TRACING=true` requires a recording span, seeds propagation headers before signing,
+and verifies that they remain present but unsigned. The test emits only aggregate request-method
+and session-header counts. Set `MCP_IAM_IT_EXPECTED_RESULT_JSON` to additionally compare the tool's
+structured or JSON text response without printing its contents. Keep HTTP wire logging disabled.
+
+On 2026-09-05, ADOT 2.30.0 passed all eight local wire regressions and the live test against a
+Terraform-provisioned IAM Gateway in `us-east-1`, using temporary credentials for an ARN-scoped
+caller role. Initialize, tools/list, tools/call, and the expected Lambda echo response passed with
+active tracing. The signing hook observed four POST requests and one GET request; this is not an
+assertion that the Gateway accepted SSE. No session header was issued, so session-aware DELETE
+and SSE reconnect were not exercised live. The ten managed resources were destroyed afterward;
+empty state, a no-op destroy plan, and independent AWS absence checks all passed.
 
 These commands do not provision AWS resources. Without the documented Gateway environment, live
 verification is not executed and must not be reported as passing. SSE/reconnect and DELETE depend

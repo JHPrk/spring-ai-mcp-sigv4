@@ -216,7 +216,11 @@ Run it separately from the default test lifecycle with:
 ```
 
 The test passed against a disposable IAM-authenticated AgentCore Gateway in `us-east-1` on
-2026-08-10, covering initialize, tools/list, tools/call, and graceful session close.
+2026-09-05 with ADOT 2.30.0 and active tracing, covering initialize, tools/list, tools/call, and
+an exact Lambda echo response assertion. All ten Terraform-managed resources were removed and
+verified absent. This Gateway did not issue a session, so session-aware DELETE was not exercised
+live. See [instrumented HTTP verification](docs/configuration.md#instrumented-http-verification)
+for the tracing inputs and coverage limits.
 
 The `check` lifecycle enforces Spring Java Format, Spring AI-aligned Checkstyle, Java compiler
 warnings, Error Prone's locale check, and NullAway in JSpecify mode for main sources.
