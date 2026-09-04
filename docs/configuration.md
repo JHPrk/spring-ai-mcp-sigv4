@@ -62,7 +62,7 @@ spring.ai.mcp.client.authorization.aws.connections:
 ```
 
 The two AWS endpoints are signed with their own scopes; `public-server` is not signed.
-If two connection names resolve to the same endpoint, their effective signing scopes must
+If two connection names resolve to the same endpoint, their effective signing scopes
 and additional unsigned-header sets must be identical after normalization.
 
 ## Credentials and region

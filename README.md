@@ -124,8 +124,8 @@ HTTP signing pipeline. See
 The signer owns `Authorization`, `X-Amz-Date`, `X-Amz-Content-Sha256`, and
 `X-Amz-Security-Token`. If any of those headers are already present, case-insensitively, signing
 fails before credentials are resolved. This prevents stale signing metadata from surviving a
-request. Other application and MCP headers are preserved; stable, eligible headers are signed; the signer does not replace
-them with the AWS signer's complete header map.
+request. Other application and MCP headers are preserved, and stable, eligible headers are signed.
+The signer does not replace them with the AWS signer's complete header map.
 
 ## Security defaults
 
