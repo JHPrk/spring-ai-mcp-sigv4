@@ -96,8 +96,7 @@ class AwsSigV4McpRequestCustomizerTests {
 	@Test
 	void shouldLeavePropagationHeadersOnWireWithoutSigningThem() {
 		URI endpoint = URI.create("https://example.com/mcp");
-		HttpRequest.Builder builder = requestBuilder("POST", endpoint, "{}")
-			.header("TraceParent", "parent-context")
+		HttpRequest.Builder builder = requestBuilder("POST", endpoint, "{}").header("TraceParent", "parent-context")
 			.header("TraceState", "test=value")
 			.header("Baggage", "test=value")
 			.header("X-Custom-Header", "stable");
@@ -108,6 +107,68 @@ class AwsSigV4McpRequestCustomizerTests {
 		String signedHeaders = authorization(request).split("SignedHeaders=", 2)[1].split(",", 2)[0];
 		assertThat(signedHeaders).doesNotContain("traceparent", "tracestate", "baggage");
 		assertThat(signedHeaders).contains("x-custom-header");
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "traceparent", "tracestate", "baggage", "b3", "x-b3-traceid", "x-b3-spanid",
+			"x-b3-parentspanid", "x-b3-sampled", "x-b3-flags", "x-amzn-trace-id" })
+	void shouldPreserveExcludedHeaderValues(String name) {
+		URI endpoint = URI.create("https://example.com/mcp");
+		HttpRequest.Builder builder = requestBuilder("GET", endpoint, null).header(name, "one").header(name, "two");
+		HttpRequest request = customize(builder, "GET", endpoint, null, () -> BASIC_CREDENTIALS);
+		assertThat(request.headers().allValues(name)).containsExactly("one", "two");
+		assertThat(signedHeaders(request)).doesNotContain(name);
+	}
+
+	@Test
+	void shouldUseCustomPolicyForApplicationHeaders() {
+		HttpRequest request = signWithPolicy(AwsSigV4HeaderSigningPolicies.excluding(List.of("X-Company-Trace")));
+		assertThat(request.headers().firstValue("X-Company-Trace")).contains("company");
+		assertThat(signedHeaders(request)).doesNotContain("x-company-trace").contains("traceparent", "x-stable");
+	}
+
+	@Test
+	void allPolicyRestoresEligibilityButAwsStillExcludesVolatileHeaders() {
+		HttpRequest request = signWithPolicy(AwsSigV4HeaderSigningPolicies.all());
+		assertThat(signedHeaders(request)).contains("traceparent", "x-company-trace", "x-stable")
+			.doesNotContain("x-amzn-trace-id", "user-agent", "x-forwarded-for");
+		assertThat(request.headers().firstValue("x-amzn-trace-id")).contains("xray");
+		assertThat(request.headers().firstValue("user-agent")).contains("test-client");
+	}
+
+	@Test
+	void policyCannotSuppressSignerGeneratedMetadataOrOwnedHeaderValidation() {
+		HttpRequest request = signWithPolicy(name -> false);
+		assertThat(signedHeaders(request)).contains("host", "x-amz-date", "x-amz-content-sha256");
+		URI endpoint = URI.create("https://example.com/mcp");
+		AtomicInteger resolutions = new AtomicInteger();
+		var customizer = new AwsSigV4McpRequestCustomizer(() -> {
+			resolutions.incrementAndGet();
+			return BASIC_CREDENTIALS;
+		}, Region.AP_NORTHEAST_2, "bedrock-agentcore", endpoint, name -> false);
+		assertThatThrownBy(() -> customizer.customize(HttpRequest.newBuilder(endpoint).header("X-Amz-Date", "stale"),
+				"GET", endpoint, null, McpTransportContext.EMPTY))
+			.isInstanceOf(IllegalStateException.class);
+		assertThat(resolutions).hasValue(0);
+	}
+
+	private static HttpRequest signWithPolicy(AwsSigV4HeaderSigningPolicy policy) {
+		URI endpoint = URI.create("https://example.com/mcp");
+		var customizer = new AwsSigV4McpRequestCustomizer(() -> BASIC_CREDENTIALS, Region.AP_NORTHEAST_2,
+				"bedrock-agentcore", endpoint, policy);
+		var builder = requestBuilder("POST", endpoint, "{}").header("TraceParent", "parent")
+			.header("X-Company-Trace", "company")
+			.header("X-Stable", "stable")
+			.header("X-Amzn-Trace-Id", "xray")
+			.header("User-Agent", "test-client")
+			.header("X-Forwarded-For", "127.0.0.1");
+		return Mono.from(customizer.customize(builder, "POST", endpoint, "{}", McpTransportContext.EMPTY))
+			.block()
+			.build();
+	}
+
+	private static List<String> signedHeaders(HttpRequest request) {
+		return List.of(authorization(request).split("SignedHeaders=", 2)[1].split(",", 2)[0].split(";"));
 	}
 
 	@Test
