@@ -37,6 +37,7 @@ import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -164,13 +165,28 @@ class AgentCoreGatewaySigV4IT {
 		assertThat(Boolean.TRUE.equals(result.isError())).isFalse();
 		String expectedResultJson = System.getenv("MCP_IAM_IT_EXPECTED_RESULT_JSON");
 		if (expectedResultJson != null && !expectedResultJson.isBlank()) {
-			var expected = readArguments(expectedResultJson);
-			boolean matches = expected.equals(result.structuredContent()) || result.content()
-				.stream()
-				.filter(McpSchema.TextContent.class::isInstance)
-				.map(McpSchema.TextContent.class::cast)
-				.anyMatch(content -> expected.equals(readArguments(content.text())));
-			assertThat(matches).as("tool response must match the configured expected JSON").isTrue();
+			assertExpectedResult(result, expectedResultJson);
+		}
+	}
+
+	static void assertExpectedResult(McpSchema.CallToolResult result, String expectedResultJson) {
+		var expected = readArguments(expectedResultJson);
+		boolean matches = expected.equals(result.structuredContent()) || result.content()
+			.stream()
+			.filter(McpSchema.TextContent.class::isInstance)
+			.map(McpSchema.TextContent.class::cast)
+			.anyMatch(content -> matchesExpectedJson(expected, content.text()));
+		assertThat(matches).as("tool response must match the configured expected JSON").isTrue();
+	}
+
+	private static boolean matchesExpectedJson(Map<String, Object> expected, String text) {
+		try {
+			return expected.equals(new ObjectMapper().readValue(text, Map.class));
+		}
+		catch (JacksonException ex) {
+			// Text blocks may contain explanations. Skip text that cannot be parsed
+			// as a JSON object without exposing parsing exceptions or response values.
+			return false;
 		}
 	}
 
@@ -190,7 +206,7 @@ class AgentCoreGatewaySigV4IT {
 		}
 		catch (Exception ex) {
 			// Jackson exceptions may include tool input or response contents.
-			throw new AssertionError("Live tool arguments, expected results, and text results must be JSON objects");
+			throw new AssertionError("Live tool arguments and expected results must be JSON objects");
 		}
 	}
 
