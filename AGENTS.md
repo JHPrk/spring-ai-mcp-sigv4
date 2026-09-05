@@ -27,8 +27,11 @@ signing APIs.
 - Copy only the SigV4 headers required by the signed request back from the AWS signer, including
   `X-Amz-Content-Sha256` when it appears in `SignedHeaders`. Preserve application and MCP headers
   already present on the JDK request builder.
-- SigV4 must run after other ordered request customizers so their headers are covered by the
-  signature.
+- SigV4 must run after other ordered request customizers so eligible stable MCP and application
+  headers are covered by the signature. Explicit late-bound/volatile headers remain on the wire
+  while intentionally excluded from `SignedHeaders`. Never remove them from the request builder.
+- Header signing policy belongs in the Boot-independent core. Do not add production tracing
+  dependencies, vendor detection, or HttpClient wrappers for send-time propagation.
 - Do not combine an OAuth Bearer customizer and SigV4 on the same connection.
 
 ## Compatibility invariants
@@ -61,6 +64,9 @@ Run before handing off a change:
 ```shell
 ./gradlew clean check publishToMavenLocal
 ```
+
+`check` includes the local `otelAgentTest` with a real javaagent and no external exporter.
+Keep that regression deterministic and keep all OTel artifacts test-only.
 
 When AWS integration behavior changes, also run `AgentCoreGatewaySigV4IT` with the environment
 documented in `.env.example`, using short-lived credentials and a disposable test gateway.

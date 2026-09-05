@@ -19,7 +19,10 @@ package org.springaicommunity.mcp.sigv4;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.time.Clock;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import io.modelcontextprotocol.client.transport.customizer.McpAsyncHttpClientRequestCustomizer;
@@ -31,6 +34,7 @@ import reactor.core.scheduler.Schedulers;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.http.ContentStreamProvider;
+import software.amazon.awssdk.http.SdkHttpRequest;
 import software.amazon.awssdk.http.auth.aws.signer.AwsV4FamilyHttpSigner;
 import software.amazon.awssdk.http.auth.aws.signer.AwsV4HttpSigner;
 import software.amazon.awssdk.http.auth.spi.signer.HttpSigner;
@@ -50,8 +54,8 @@ import org.springframework.util.Assert;
  *
  * <p>
  * Requests that already contain a SigV4-owned header are rejected before credentials are
- * resolved. Other application and MCP headers are preserved and included in the
- * signature.
+ * resolved. Other application and MCP headers are preserved on the wire; eligible headers
+ * are included in the signature according to the header signing policy.
  * </p>
  *
  * @since 0.1.0
@@ -69,6 +73,8 @@ public final class AwsSigV4McpRequestCustomizer implements McpAsyncHttpClientReq
 
 	private final URI endpoint;
 
+	private final AwsSigV4HeaderSigningPolicy headerSigningPolicy;
+
 	private final AwsV4HttpSigner signer = AwsV4HttpSigner.create();
 
 	private final AwsV4HttpRequestAdapter requestAdapter = new AwsV4HttpRequestAdapter();
@@ -83,6 +89,21 @@ public final class AwsSigV4McpRequestCustomizer implements McpAsyncHttpClientReq
 	 */
 	public AwsSigV4McpRequestCustomizer(AwsCredentialsProvider credentialsProvider, Region region, String serviceName,
 			URI endpoint) {
+		this(credentialsProvider, region, serviceName, endpoint, AwsSigV4HeaderSigningPolicies.defaultPolicy());
+	}
+
+	/**
+	 * Creates a customizer with an explicit header signing policy.
+	 * @param credentialsProvider provider resolved for every HTTP request
+	 * @param region signing region used in the credential scope
+	 * @param serviceName signing service name
+	 * @param endpoint exact normalized MCP endpoint this customizer may sign
+	 * @param headerSigningPolicy thread-safe policy selecting existing headers for
+	 * signing; excluded headers remain on the original request
+	 * @since 0.1.0
+	 */
+	public AwsSigV4McpRequestCustomizer(AwsCredentialsProvider credentialsProvider, Region region, String serviceName,
+			URI endpoint, AwsSigV4HeaderSigningPolicy headerSigningPolicy) {
 		Assert.notNull(credentialsProvider, "credentialsProvider must not be null");
 		Assert.notNull(region, "region must not be null");
 		Assert.hasText(serviceName, "serviceName must not be blank");
@@ -92,6 +113,8 @@ public final class AwsSigV4McpRequestCustomizer implements McpAsyncHttpClientReq
 		this.region = region;
 		this.serviceName = serviceName;
 		this.endpoint = endpoint.normalize();
+		Assert.notNull(headerSigningPolicy, "headerSigningPolicy must not be null");
+		this.headerSigningPolicy = headerSigningPolicy;
 	}
 
 	@Override
@@ -100,23 +123,27 @@ public final class AwsSigV4McpRequestCustomizer implements McpAsyncHttpClientReq
 		if (!supports(endpoint)) {
 			return Mono.just(builder);
 		}
-		boolean hasSigV4OwnedHeader = builder.build()
-			.headers()
-			.map()
-			.keySet()
+		HttpRequest snapshot = builder.build();
+		Map<String, List<String>> wireHeaders = snapshot.headers().map();
+		boolean hasSigV4OwnedHeader = wireHeaders.keySet()
 			.stream()
 			.map(name -> name.toLowerCase(Locale.ROOT))
 			.anyMatch(SIGV4_OWNED_HEADERS::contains);
 		Assert.state(!hasSigV4OwnedHeader, "AWS SigV4-owned headers must not be set before signing");
+		Map<String, List<String>> signingHeaders = new LinkedHashMap<>();
+		wireHeaders.forEach((name, values) -> {
+			if (this.headerSigningPolicy.shouldSign(name.toLowerCase(Locale.ROOT))) {
+				signingHeaders.put(name, values);
+			}
+		});
+		var sdkRequest = this.requestAdapter.adapt(method, endpoint, signingHeaders);
 		return Mono.fromCallable(this.credentialsProvider::resolveCredentials)
 			.subscribeOn(Schedulers.boundedElastic())
-			.map(credentials -> sign(builder, method, endpoint, body, credentials));
+			.map(credentials -> sign(builder, sdkRequest, body, credentials));
 	}
 
-	private HttpRequest.Builder sign(HttpRequest.Builder builder, String method, URI endpoint, @Nullable String body,
+	private HttpRequest.Builder sign(HttpRequest.Builder builder, SdkHttpRequest sdkRequest, @Nullable String body,
 			AwsCredentials credentials) {
-		HttpRequest snapshot = builder.build();
-		var sdkRequest = this.requestAdapter.adapt(method, endpoint, snapshot.headers().map());
 		SignedRequest signedRequest = this.signer.sign(signRequest -> {
 			signRequest.identity(credentials)
 				.request(sdkRequest)

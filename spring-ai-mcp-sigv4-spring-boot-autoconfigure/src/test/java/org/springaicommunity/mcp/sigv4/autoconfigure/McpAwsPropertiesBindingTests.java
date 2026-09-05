@@ -54,6 +54,43 @@ class McpAwsPropertiesBindingTests {
 		});
 	}
 
+	@Test
+	void additionalUnsignedHeadersDefaultToEmpty() {
+		this.contextRunner.run(context -> assertThat(context.getBean(McpAwsProperties.class)
+			.getConnections()
+			.get("agentcore")
+			.getSigning()
+			.getAdditionalUnsignedHeaders()).isEmpty());
+	}
+
+	@Test
+	void bindsNormalizesAndDeduplicatesUnsignedHeaders() {
+		String prefix = McpAwsProperties.CONFIG_PREFIX + ".connections.agentcore.signing.additional-unsigned-headers";
+		this.contextRunner
+			.withPropertyValues(prefix + "[0]=X-Company-Trace", prefix + "[1]=x-company-trace",
+					prefix + "[2]= X-Another ")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+				assertThat(context.getBean(McpAwsProperties.class)
+					.getConnections()
+					.get("agentcore")
+					.getSigning()
+					.getAdditionalUnsignedHeaders()).containsExactlyInAnyOrder("x-company-trace", "x-another");
+			});
+	}
+
+	@Test
+	void rejectsBlankUnsignedHeader() {
+		this.contextRunner
+			.withPropertyValues(
+					McpAwsProperties.CONFIG_PREFIX + ".connections.agentcore.signing.additional-unsigned-headers[0]= ")
+			.run(context -> {
+				assertThat(context).hasFailed();
+				assertThat(context.getStartupFailure())
+					.hasRootCauseMessage("additional unsigned header names must not be blank");
+			});
+	}
+
 	@Configuration(proxyBeanMethods = false)
 	@EnableConfigurationProperties({ McpStreamableHttpClientProperties.class, McpAwsProperties.class })
 	static class BindingConfiguration {

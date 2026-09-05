@@ -36,7 +36,7 @@ transport-level SigV4 authentication for any IAM-protected MCP Streamable HTTP e
 | Build JDK | Liberica 17.0.19+ |
 | Spring AI | 2.0.x |
 | Spring Boot | 4.1.x |
-| AWS SDK for Java | 2.51.x |
+| AWS SDK for Java | 2.54.x |
 
 See [the compatibility policy](docs/compatibility.md) before changing dependency lines.
 The `0.1.x` line does not target Spring AI 1.1.x; demand for that baseline would be handled on a
@@ -124,8 +124,8 @@ HTTP signing pipeline. See
 The signer owns `Authorization`, `X-Amz-Date`, `X-Amz-Content-Sha256`, and
 `X-Amz-Security-Token`. If any of those headers are already present, case-insensitively, signing
 fails before credentials are resolved. This prevents stale signing metadata from surviving a
-request. Other application and MCP headers are preserved and signed; the signer does not replace
-them with the AWS signer's complete header map.
+request. Other application and MCP headers are preserved, and stable, eligible headers are signed.
+The signer does not replace them with the AWS signer's complete header map.
 
 ## Security defaults
 
@@ -137,7 +137,7 @@ spring.ai.mcp.client.authorization.aws.connections.local.allow-insecure-http: tr
 ```
 
 On supported Spring AI 2.0.x API shapes that natively collect ordered MCP request customizers,
-SigV4 runs last so headers added earlier are included in the canonical request.
+SigV4 runs last so eligible headers added earlier are included in the canonical request.
 Spring AI 2.0.x API shapes without native request-customizer composition use a capability-detected
 fallback transport bridge. The bridge adapts ordered sync request-customizer beans to async,
 combines them with ordered async beans, and signs last. A
@@ -152,6 +152,29 @@ Spring AI's sync MCP client does not imply a Reactor-free HTTP transport. MCP Ja
 the sync request customizer to its internal async pipeline and already brings Reactor through
 `mcp-core`. SigV4 resolves potentially blocking AWS credentials on `boundedElastic`; see the
 [request customizer composition](docs/configuration.md#request-customizer-composition) notes.
+
+## Late-bound HTTP headers
+
+Wire headers and SigV4 `SignedHeaders` serve different purposes. The default policy keeps W3C
+`traceparent`, `tracestate`, and `baggage`, B3 single/multi headers, and X-Ray `x-amzn-trace-id`
+on the outbound request while excluding them from signing input. HTTP client instrumentation may
+then propagate a new client span at send time without invalidating the signature.
+Stable MCP and application headers remain signed by default.
+
+For an additional exact exclusion:
+
+```yaml
+spring.ai.mcp.client.authorization.aws.connections.agentcore.signing:
+  additional-unsigned-headers:
+    - x-company-trace-id
+```
+
+An unsigned header loses SigV4 integrity protection; keep stable business and MCP headers signed
+whenever practical. AWS SDK may independently exclude other volatile headers. No OTel/ADOT
+production dependency or tracing-library detection is introduced. Changing Spring ordering cannot
+address javaagent send-time mutation, and disabling JDK HTTP instrumentation is not the recommended
+solution. See [header signing policies](docs/configuration.md#header-signing-policies) for defaults,
+manual construction, and an application-provided `AwsSigV4HeaderSigningPolicy` bean.
 
 ## Manual use without Spring Boot
 
@@ -179,6 +202,10 @@ Manual callers that create a closeable credentials provider also own its lifecyc
 ./gradlew clean check publishToMavenLocal
 ```
 
+`check` includes a local regression in a forked JVM with upstream OpenTelemetry Java Agent 2.31.1.
+It exercises actual JDK HTTP instrumentation with exporters disabled, without a collector or AWS.
+Run it alone with `./gradlew :spring-ai-mcp-sigv4:otelAgentTest`.
+
 The live `AgentCoreGatewaySigV4IT` test is skipped unless `MCP_GW_URL` is set.
 When enabled, it uses the default AWS provider chain and can list and call an MCP tool.
 See [.env.example](.env.example) for all inputs.
@@ -189,7 +216,11 @@ Run it separately from the default test lifecycle with:
 ```
 
 The test passed against a disposable IAM-authenticated AgentCore Gateway in `us-east-1` on
-2026-08-10, covering initialize, tools/list, tools/call, and graceful session close.
+2026-09-05 with ADOT 2.30.0 and active tracing, covering initialize, tools/list, tools/call, and
+an exact Lambda echo response assertion. All ten Terraform-managed resources were removed and
+verified absent. This Gateway did not issue a session, so session-aware DELETE was not exercised
+live. See [instrumented HTTP verification](docs/configuration.md#instrumented-http-verification)
+for the tracing inputs and coverage limits.
 
 The `check` lifecycle enforces Spring Java Format, Spring AI-aligned Checkstyle, Java compiler
 warnings, Error Prone's locale check, and NullAway in JSpecify mode for main sources.

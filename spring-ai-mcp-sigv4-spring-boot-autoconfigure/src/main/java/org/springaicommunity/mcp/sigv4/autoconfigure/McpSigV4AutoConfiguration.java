@@ -21,12 +21,15 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.customizer.DelegatingMcpAsyncHttpClientRequestCustomizer;
 import io.modelcontextprotocol.client.transport.customizer.McpAsyncHttpClientRequestCustomizer;
 import io.modelcontextprotocol.client.transport.customizer.McpSyncHttpClientRequestCustomizer;
 import org.jspecify.annotations.Nullable;
+import org.springaicommunity.mcp.sigv4.AwsSigV4HeaderSigningPolicies;
+import org.springaicommunity.mcp.sigv4.AwsSigV4HeaderSigningPolicy;
 import org.springaicommunity.mcp.sigv4.AwsSigV4McpRequestCustomizer;
 import org.springaicommunity.mcp.sigv4.RoutingAwsSigV4McpRequestCustomizer;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -63,6 +66,13 @@ import org.springframework.util.StringUtils;
 @EnableConfigurationProperties({ McpAwsProperties.class, McpStreamableHttpClientProperties.class })
 public class McpSigV4AutoConfiguration {
 
+	@Bean
+	@Conditional(OnAnyMcpAwsConnectionCondition.class)
+	@ConditionalOnMissingBean(AwsSigV4HeaderSigningPolicy.class)
+	AwsSigV4HeaderSigningPolicy mcpSigV4HeaderSigningPolicy() {
+		return AwsSigV4HeaderSigningPolicies.defaultPolicy();
+	}
+
 	/**
 	 * Creates the default AWS credentials provider when the application has not supplied
 	 * one. Spring manages and closes this provider with the application context.
@@ -95,6 +105,7 @@ public class McpSigV4AutoConfiguration {
 	 * @param credentialsProvider application-provided or auto-configured credentials
 	 * provider
 	 * @param regionProvider application-provided or auto-configured region provider
+	 * @param headerSigningPolicy application-provided or default base signing policy
 	 * @return request customizer that signs only configured endpoints
 	 */
 	@Bean
@@ -102,8 +113,9 @@ public class McpSigV4AutoConfiguration {
 	@ConditionalOnMissingBean(RoutingAwsSigV4McpRequestCustomizer.class)
 	RoutingAwsSigV4McpRequestCustomizer awsSigV4McpRequestCustomizer(McpAwsProperties awsProperties,
 			McpStreamableHttpClientProperties streamableProperties, AwsCredentialsProvider credentialsProvider,
-			AwsRegionProvider regionProvider) {
-		return createRoutingCustomizer(awsProperties, streamableProperties, credentialsProvider, regionProvider);
+			AwsRegionProvider regionProvider, AwsSigV4HeaderSigningPolicy headerSigningPolicy) {
+		return createRoutingCustomizer(awsProperties, streamableProperties, credentialsProvider, regionProvider,
+				headerSigningPolicy);
 	}
 
 	/**
@@ -148,7 +160,7 @@ public class McpSigV4AutoConfiguration {
 
 	static RoutingAwsSigV4McpRequestCustomizer createRoutingCustomizer(McpAwsProperties awsProperties,
 			McpStreamableHttpClientProperties streamableProperties, AwsCredentialsProvider credentialsProvider,
-			AwsRegionProvider regionProvider) {
+			AwsRegionProvider regionProvider, AwsSigV4HeaderSigningPolicy headerSigningPolicy) {
 		Map<URI, AwsSigV4McpRequestCustomizer> delegates = new LinkedHashMap<>();
 		Map<URI, SigningScope> scopes = new LinkedHashMap<>();
 		awsProperties.getConnections().forEach((name, aws) -> {
@@ -160,16 +172,24 @@ public class McpSigV4AutoConfiguration {
 			URI endpoint = resolveEndpoint(name, transport);
 			validateScheme(name, endpoint, aws.isAllowInsecureHttp());
 			Region region = resolveRegion(aws.getRegion(), regionProvider);
-			SigningScope scope = new SigningScope(region, aws.getServiceName());
+			Set<String> additionalUnsignedHeaders = aws.getSigning().getAdditionalUnsignedHeaders();
+			SigningScope scope = new SigningScope(region, aws.getServiceName(), additionalUnsignedHeaders);
 			SigningScope existing = scopes.putIfAbsent(endpoint, scope);
 			Assert.state(existing == null || existing.equals(scope),
 					"MCP connections resolving to the same endpoint have conflicting AWS signing scopes");
 			if (existing == null) {
 				delegates.put(endpoint,
-						new AwsSigV4McpRequestCustomizer(credentialsProvider, region, aws.getServiceName(), endpoint));
+						new AwsSigV4McpRequestCustomizer(credentialsProvider, region, aws.getServiceName(), endpoint,
+								composeHeaderSigningPolicy(headerSigningPolicy, additionalUnsignedHeaders)));
 			}
 		});
 		return new RoutingAwsSigV4McpRequestCustomizer(delegates);
+	}
+
+	private static AwsSigV4HeaderSigningPolicy composeHeaderSigningPolicy(AwsSigV4HeaderSigningPolicy base,
+			Set<String> additionalUnsignedHeaders) {
+		AwsSigV4HeaderSigningPolicy additional = AwsSigV4HeaderSigningPolicies.excluding(additionalUnsignedHeaders);
+		return name -> base.shouldSign(name) && additional.shouldSign(name);
 	}
 
 	private static URI resolveEndpoint(String name, ConnectionParameters transport) {
@@ -193,7 +213,7 @@ public class McpSigV4AutoConfiguration {
 		return StringUtils.hasText(configuredRegion) ? Region.of(configuredRegion) : regionProvider.getRegion();
 	}
 
-	private record SigningScope(Region region, String serviceName) {
+	private record SigningScope(Region region, String serviceName, Set<String> additionalUnsignedHeaders) {
 	}
 
 }
