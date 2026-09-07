@@ -16,7 +16,12 @@
       "type": "java.lang.Boolean",
       "description": "Whether SigV4 credentials may be sent over clear-text HTTP. Enable only for trusted local tests.",
       "defaultValue": false
+    },
+    {
+      "name": "spring.ai.mcp.client.authorization.aws.connections.*.signing.additional-unsigned-headers",
+      "type": "java.util.Set<java.lang.String>",
+      "description": "Additional exact, case-insensitive header names excluded from SigV4 signing input. Headers remain on the wire without SigV4 integrity protection. Blank names are rejected; case variants are deduplicated.",
+      "defaultValue": []
     }
   ]
 }
-

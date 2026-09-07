@@ -307,6 +307,7 @@ class McpSigV4AutoConfigurationTests {
 			assertThat(context).doesNotHaveBean(RoutingAwsSigV4McpRequestCustomizer.class);
 			assertThat(context).doesNotHaveBean(AwsCredentialsProvider.class);
 			assertThat(context).doesNotHaveBean(AwsRegionProvider.class);
+			assertThat(context).doesNotHaveBean(org.springaicommunity.mcp.sigv4.AwsSigV4HeaderSigningPolicy.class);
 		});
 	}
 

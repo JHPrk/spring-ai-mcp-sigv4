@@ -17,11 +17,15 @@
 package org.springaicommunity.mcp.sigv4.autoconfigure;
 
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.jspecify.annotations.Nullable;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 /**
@@ -65,6 +69,17 @@ public class McpAwsProperties {
 		private @Nullable String region;
 
 		private boolean allowInsecureHttp;
+
+		private final Signing signing = new Signing();
+
+		/**
+		 * Returns header eligibility settings for this connection.
+		 * @return signing settings
+		 * @since 0.1.0
+		 */
+		public Signing getSigning() {
+			return this.signing;
+		}
 
 		/**
 		 * Returns the AWS SigV4 service signing name.
@@ -113,6 +128,43 @@ public class McpAwsProperties {
 		 */
 		public void setAllowInsecureHttp(boolean allowInsecureHttp) {
 			this.allowInsecureHttp = allowInsecureHttp;
+		}
+
+	}
+
+	/**
+	 * Additional exact header exclusions composed over the application signing policy.
+	 *
+	 * @since 0.1.0
+	 */
+	public static class Signing {
+
+		private Set<String> additionalUnsignedHeaders = Set.of();
+
+		/**
+		 * Returns normalized exclusions. These headers remain on the actual HTTP request
+		 * but are omitted from the library's signing input.
+		 * @return immutable, case-normalized header names; empty by default
+		 * @since 0.1.0
+		 */
+		public Set<String> getAdditionalUnsignedHeaders() {
+			return this.additionalUnsignedHeaders;
+		}
+
+		/**
+		 * Sets exact additional exclusions, trimming and deduplicating case variants.
+		 * @param headerNames non-null set of non-blank header names
+		 * @throws IllegalArgumentException if names are null or blank
+		 * @since 0.1.0
+		 */
+		public void setAdditionalUnsignedHeaders(Set<String> headerNames) {
+			Assert.notNull(headerNames, "additional unsigned headers must not be null");
+			Set<String> normalized = new HashSet<>();
+			for (String name : headerNames) {
+				Assert.hasText(name, "additional unsigned header names must not be blank");
+				normalized.add(name.trim().toLowerCase(Locale.ROOT));
+			}
+			this.additionalUnsignedHeaders = Set.copyOf(normalized);
 		}
 
 	}

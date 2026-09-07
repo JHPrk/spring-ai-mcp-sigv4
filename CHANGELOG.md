@@ -7,6 +7,13 @@ versioning after the first stable release.
 
 ### Added
 
+- Boot-independent `AwsSigV4HeaderSigningPolicy` and default/all/excluding factories, preserving
+  the existing request-customizer constructor.
+- A replaceable Spring base policy bean and per-connection `signing.additional-unsigned-headers`
+  with case normalization, blank rejection, and deduplication.
+- Local `otelAgentTest` in `check`, using a real OpenTelemetry Java Agent, on-wire signature
+  recomputation, and negative controls without AWS or a collector.
+
 - AWS SigV4 signing for MCP Streamable HTTP GET, POST, and DELETE requests.
 - Connection-scoped Spring Boot auto-configuration and starter.
 - Per-connection region, service name, and secure HTTP validation.
@@ -18,6 +25,11 @@ versioning after the first stable release.
 - Gradle wrapper validation and repository guidance for maintainers and coding assistants.
 
 ### Fixed
+
+- Late-bound W3C, B3, and X-Ray propagation headers remain on the wire while being excluded from
+  signing input by default, allowing instrumented JDK HTTP client propagation after signing.
+  Stable application/MCP headers remain eligible; the AWS signer retains its own exclusions.
+- Conflicting header exclusion sets on aliases of one exact endpoint are rejected at startup.
 
 - Reject pre-existing SigV4-owned headers case-insensitively before credential resolution,
   preventing stale session tokens or signing metadata from surviving request signing.

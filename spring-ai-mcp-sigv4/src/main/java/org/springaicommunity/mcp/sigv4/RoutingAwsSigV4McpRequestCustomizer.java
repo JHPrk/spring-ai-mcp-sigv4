@@ -36,7 +36,8 @@ import org.springframework.util.Assert;
  * <p>
  * Requests for endpoints that are not configured for AWS authentication are returned
  * unchanged. The customizer runs with the lowest precedence so headers contributed by
- * other request customizers are included in the signature.
+ * other request customizers are present before signing. Eligible stable headers are
+ * signed; intentionally unsigned headers remain on the wire.
  * </p>
  *
  * @since 0.1.0

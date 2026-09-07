@@ -19,16 +19,25 @@ package org.springaicommunity.mcp.sigv4;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.baggage.Baggage;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,7 +51,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * Runs only when AWS credentials and {@code MCP_GW_URL} are present. Optional:
  * {@code MCP_GW_ENDPOINT} (default {@code /mcp}), {@code MCP_IAM_AUTH_SERVICE} (default
  * {@code bedrock-agentcore}), {@code MCP_IAM_IT_TOOL_NAME},
- * {@code MCP_IAM_IT_TOOL_ARGUMENTS_JSON}.
+ * {@code MCP_IAM_IT_TOOL_ARGUMENTS_JSON}, {@code MCP_IAM_IT_EXPECTED_RESULT_JSON}. Set
+ * {@code MCP_IAM_IT_TRACING=true} with a real Java agent to require an active trace and
+ * verify the late-bound header signing policy against the live gateway.
  * </p>
  */
 @Tag("integration")
@@ -68,14 +79,52 @@ class AgentCoreGatewaySigV4IT {
 	}
 
 	@Test
+	@SuppressWarnings("try")
 	void initializesListsAndCallsToolsWithSigV4() {
-		try (var credentialsProvider = DefaultCredentialsProvider.builder().build()) {
+		boolean tracing = Boolean.parseBoolean(System.getenv("MCP_IAM_IT_TRACING"));
+		Span span = tracing
+				? GlobalOpenTelemetry.getTracer("sigv4-live-test").spanBuilder("gateway-verification").startSpan()
+				: Span.getInvalid();
+		if (tracing) {
+			assertThat(span.isRecording()).as("real agent must record the live verification span").isTrue();
+		}
+		Context traceContext = Baggage.builder()
+			.put("sigv4-test", "live")
+			.build()
+			.storeInContext(span.storeInContext(Context.current()));
+		Map<String, AtomicInteger> requests = new ConcurrentHashMap<>();
+		AtomicInteger sessionRequests = new AtomicInteger();
+		try (Scope scope = traceContext.makeCurrent();
+				var credentialsProvider = DefaultCredentialsProvider.builder().build()) {
 			var region = DefaultAwsRegionProviderChain.builder().build().getRegion();
 			URI resolvedEndpoint = URI.create(gatewayUrl).resolve(endpoint).normalize();
 			var signer = new AwsSigV4McpRequestCustomizer(credentialsProvider, region, serviceName, resolvedEndpoint);
 			var transport = HttpClientStreamableHttpTransport.builder(gatewayUrl)
 				.endpoint(endpoint)
-				.asyncHttpRequestCustomizer(signer)
+				.asyncHttpRequestCustomizer((builder, method, uri, body, context) -> {
+					if (tracing) {
+						GlobalOpenTelemetry.getPropagators()
+							.getTextMapPropagator()
+							.inject(traceContext, builder, (carrier, name, value) -> carrier.setHeader(name, value));
+						assertThat(builder.build().headers().firstValue("traceparent").isPresent()).isTrue();
+					}
+					return Mono.from(signer.customize(builder, method, uri, body, context)).doOnNext(signed -> {
+						var headers = signed.build().headers();
+						if (tracing) {
+							String authorization = headers.firstValue("Authorization").orElseThrow();
+							String signedHeaders = authorization.split("SignedHeaders=", 2)[1].split(",", 2)[0];
+							assertThat(signedHeaders.contains("traceparent") || signedHeaders.contains("baggage"))
+								.as("propagation headers must be excluded from the signature")
+								.isFalse();
+							assertThat(headers.firstValue("traceparent").isPresent()).isTrue();
+							assertThat(headers.firstValue("baggage").isPresent()).isTrue();
+						}
+						requests.computeIfAbsent(method, key -> new AtomicInteger()).incrementAndGet();
+						if (headers.firstValue("Mcp-Session-Id").isPresent()) {
+							sessionRequests.incrementAndGet();
+						}
+					});
+				})
 				.build();
 			var client = McpClient.sync(transport).build();
 
@@ -95,6 +144,12 @@ class AgentCoreGatewaySigV4IT {
 				client.closeGracefully();
 			}
 		}
+		finally {
+			span.end();
+			// Only aggregate protocol coverage is emitted; no request or response values.
+			System.out.println("SIGV4_LIVE tracing=" + tracing + " requests=" + requests + " sessionRequests="
+					+ sessionRequests.get());
+		}
 	}
 
 	private static void invokeTool(McpSyncClient client, List<McpSchema.Tool> discoveredTools) {
@@ -108,6 +163,31 @@ class AgentCoreGatewaySigV4IT {
 			.callTool(McpSchema.CallToolRequest.builder(toolName).arguments(readArguments(argumentsJson)).build());
 		assertThat(result).isNotNull();
 		assertThat(Boolean.TRUE.equals(result.isError())).isFalse();
+		String expectedResultJson = System.getenv("MCP_IAM_IT_EXPECTED_RESULT_JSON");
+		if (expectedResultJson != null && !expectedResultJson.isBlank()) {
+			assertExpectedResult(result, expectedResultJson);
+		}
+	}
+
+	static void assertExpectedResult(McpSchema.CallToolResult result, String expectedResultJson) {
+		var expected = readArguments(expectedResultJson);
+		boolean matches = expected.equals(result.structuredContent()) || result.content()
+			.stream()
+			.filter(McpSchema.TextContent.class::isInstance)
+			.map(McpSchema.TextContent.class::cast)
+			.anyMatch(content -> matchesExpectedJson(expected, content.text()));
+		assertThat(matches).as("tool response must match the configured expected JSON").isTrue();
+	}
+
+	private static boolean matchesExpectedJson(Map<String, Object> expected, String text) {
+		try {
+			return expected.equals(new ObjectMapper().readValue(text, Map.class));
+		}
+		catch (JacksonException ex) {
+			// Text blocks may contain explanations. Skip text that cannot be parsed
+			// as a JSON object without exposing parsing exceptions or response values.
+			return false;
+		}
 	}
 
 	private static String resolveToolName(String configuredToolName, List<McpSchema.Tool> discoveredTools) {
@@ -125,7 +205,8 @@ class AgentCoreGatewaySigV4IT {
 			return new ObjectMapper().readValue(argumentsJson, Map.class);
 		}
 		catch (Exception ex) {
-			throw new AssertionError("MCP_IAM_IT_TOOL_ARGUMENTS_JSON must be valid JSON", ex);
+			// Jackson exceptions may include tool input or response contents.
+			throw new AssertionError("Live tool arguments and expected results must be JSON objects");
 		}
 	}
 
