@@ -31,7 +31,7 @@ val otelAgent = configurations.create("otelAgent") {
 }
 
 dependencies {
-	add(otelAgent.name, "io.opentelemetry.javaagent:opentelemetry-javaagent:2.31.1")
+	add(otelAgent.name, "io.opentelemetry.javaagent:opentelemetry-javaagent:2.32.0")
 	testImplementation("io.opentelemetry:opentelemetry-api")
 }
 
