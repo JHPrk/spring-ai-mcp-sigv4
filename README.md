@@ -34,13 +34,17 @@ transport-level SigV4 authentication for any IAM-protected MCP Streamable HTTP e
 |---|---|
 | Java runtime | 17+ |
 | Build JDK | Liberica 17.0.19+ |
-| Spring AI | 2.0.x |
-| Spring Boot | 4.1.x |
-| AWS SDK for Java | 2.54.x |
+| Spring AI | 2.0.2+ within 2.0.x |
+| Spring Boot | 4.1.2+ within 4.1.x |
+| MCP Java SDK | 2.1.0, aligned with Spring AI |
+| AWS SDK for Java | 2.59.x |
+
+AssumeRole/Web Identity and SSO profiles require optional AWS credential modules; see
+[credential module dependencies](docs/configuration.md#optional-credential-modules).
 
 See [the compatibility policy](docs/compatibility.md) before changing dependency lines.
 The `0.1.x` line does not target Spring AI 1.1.x; demand for that baseline would be handled on a
-separate maintenance line rather than through the Spring AI 2.0.x fallback integration path.
+separate maintenance line. The current line requires Spring AI 2.0.2 or later in 2.0.x.
 
 ## Modules
 
@@ -92,12 +96,13 @@ spring:
             agentcore:
               url: ${MCP_GW_URL}
               endpoint: ${MCP_GW_ENDPOINT:/mcp}
-        authorization:
-          aws:
-            connections:
-              agentcore:
-                region: ${AWS_REGION:ap-northeast-2}
-                # service-name: bedrock-agentcore
+
+mcp:
+  sigv4:
+    connections:
+      agentcore:
+        region: ${AWS_REGION:ap-northeast-2}
+        # service-name: bedrock-agentcore
 ```
 
 All AWS-authenticated MCP connections share one application-level `AwsCredentialsProvider`.
@@ -133,22 +138,21 @@ The auto-configuration refuses to send signed credentials over clear-text HTTP.
 For trusted local tests only, set this per connection:
 
 ```yaml
-spring.ai.mcp.client.authorization.aws.connections.local.allow-insecure-http: true
+mcp.sigv4.connections.local.allow-insecure-http: true
 ```
 
-On supported Spring AI 2.0.x API shapes that natively collect ordered MCP request customizers,
-SigV4 runs last so eligible headers added earlier are included in the canonical request.
-Spring AI 2.0.x API shapes without native request-customizer composition use a capability-detected
-fallback transport bridge. The bridge adapts ordered sync request-customizer beans to async,
-combines them with ordered async beans, and signs last. A
-separate transport customizer that directly calls `httpRequestCustomizer(...)` or
-`asyncHttpRequestCustomizer(...)` still targets the same write-only builder slot and must install
-one explicitly composed delegate.
+Spring AI 2.0.2 composes ordered sync and async request-customizer beans. This library appends
+SigV4 using MCP SDK 2.1's `addAsyncHttpRequestCustomizer(...)` only on the named AWS transports.
+No global SigV4 request-customizer bean is registered, so an unsigned connection remains unsigned
+even when it aliases an IAM connection's exact URL. Existing request customizers run before signing.
+Application transport customizers should be declared in ordinary user configuration before this
+auto-configuration. Any transport customization installed after signing must preserve the signature;
+`@Order` alone does not make arbitrary third-party transport customizers safe.
 Do not combine OAuth Bearer authentication and SigV4 on the same connection because both write
 the `Authorization` header. The signer rejects every pre-existing SigV4-owned header instead of
 silently replacing it.
 
-Spring AI's sync MCP client does not imply a Reactor-free HTTP transport. MCP Java SDK 2.0 adapts
+Spring AI's sync MCP client does not imply a Reactor-free HTTP transport. MCP Java SDK 2.1 adapts
 the sync request customizer to its internal async pipeline and already brings Reactor through
 `mcp-core`. SigV4 resolves potentially blocking AWS credentials on `boundedElastic`; see the
 [request customizer composition](docs/configuration.md#request-customizer-composition) notes.
@@ -164,7 +168,7 @@ Stable MCP and application headers remain signed by default.
 For an additional exact exclusion:
 
 ```yaml
-spring.ai.mcp.client.authorization.aws.connections.agentcore.signing:
+mcp.sigv4.connections.agentcore.signing:
   additional-unsigned-headers:
     - x-company-trace-id
 ```
@@ -188,13 +192,16 @@ var signer = new AwsSigV4McpRequestCustomizer(
 
 var transport = HttpClientStreamableHttpTransport.builder(gatewayUrl)
         .endpoint("/mcp")
-        .asyncHttpRequestCustomizer(signer)
+        .addAsyncHttpRequestCustomizer(signer)
         .build();
 ```
 
 The manual signer is bound to the exact endpoint passed to its constructor and leaves every other
 endpoint unsigned.
 Manual callers that create a closeable credentials provider also own its lifecycle.
+The core artifact has no Spring AI model, Boot, or JSON mapper dependency. For the MCP SDK's
+default JSON mapper, add `io.modelcontextprotocol.sdk:mcp-json-jackson3` at the SDK version,
+or supply a `McpJsonMapper` directly to the transport builder. The starter supplies this integration.
 
 ## Build and verify
 
@@ -202,25 +209,31 @@ Manual callers that create a closeable credentials provider also own its lifecyc
 ./gradlew clean check publishToMavenLocal
 ```
 
-`check` includes a local regression in a forked JVM with upstream OpenTelemetry Java Agent 2.31.1.
+`check` includes a local regression in a forked JVM with upstream OpenTelemetry Java Agent 2.32.0.
 It exercises actual JDK HTTP instrumentation with exporters disabled, without a collector or AWS.
 Run it alone with `./gradlew :spring-ai-mcp-sigv4:otelAgentTest`.
 
-The live `AgentCoreGatewaySigV4IT` test is skipped unless `MCP_GW_URL` is set.
-When enabled, it uses the default AWS provider chain and can list and call an MCP tool.
+Live tests are skipped unless `MCP_GW_URL` is set. When enabled, usable AWS credentials,
+a tool name, and JSON arguments are required. The core test uses the default AWS provider chain;
+the starter test also verifies Boot auto-configuration and standard `ToolCallback` invocation.
 See [.env.example](.env.example) for all inputs.
 Run it separately from the default test lifecycle with:
 
 ```shell
-./gradlew :spring-ai-mcp-sigv4:integrationTest
+./gradlew :spring-ai-mcp-sigv4:integrationTest -PagentCoreItTracing=true
+./gradlew :spring-ai-mcp-sigv4-spring-boot-starter:integrationTest
 ```
 
-The test passed against a disposable IAM-authenticated AgentCore Gateway in `us-east-1` on
-2026-09-05 with ADOT 2.30.0 and active tracing, covering initialize, tools/list, tools/call, and
-an exact Lambda echo response assertion. All ten Terraform-managed resources were removed and
-verified absent. This Gateway did not issue a session, so session-aware DELETE was not exercised
-live. See [instrumented HTTP verification](docs/configuration.md#instrumented-http-verification)
-for the tracing inputs and coverage limits.
+Live verification covers initialization, tool discovery, tool invocation, and starter callback
+conversion against a disposable IAM Gateway. Session-aware DELETE and SSE reconnect depend on the
+server issuing a session and accepting streams. Local protocol tests cover signed session teardown.
+See [instrumented HTTP verification](docs/configuration.md#instrumented-http-verification) for
+inputs and coverage limits. Live tasks never reuse cached or up-to-date results.
+
+`check` also publishes into an isolated build-directory Maven repository and verifies real Maven
+and Gradle consumer projects, including starter auto-configuration and signed loopback MCP delivery.
+Run `./gradlew check -PtestJavaVersion=21` to exercise Java 21 while keeping Java 17 bytecode.
+Python 3 and Maven 3.9+ are required for these consumer checks.
 
 The `check` lifecycle enforces Spring Java Format, Spring AI-aligned Checkstyle, Java compiler
 warnings, Error Prone's locale check, and NullAway in JSpecify mode for main sources.

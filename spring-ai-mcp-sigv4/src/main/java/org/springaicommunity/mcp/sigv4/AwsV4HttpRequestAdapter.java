@@ -32,12 +32,13 @@ import software.amazon.awssdk.http.SdkHttpRequest;
  * <p>
  * The JDK generates the restricted {@code Host} and {@code Content-Length} headers during
  * transmission, so they are not set directly on the builder.
- * </p>
+ *
+ * @since 0.1.0
  */
 final class AwsV4HttpRequestAdapter {
 
 	/**
-	 * Converts an HTTP method, URI, and headers without changing their values.
+	 * Convert an HTTP method, URI, and headers without changing their values.
 	 * @param method HTTP method
 	 * @param uri target URI including path and query
 	 * @param headers current request headers
@@ -48,7 +49,7 @@ final class AwsV4HttpRequestAdapter {
 	}
 
 	/**
-	 * Applies only the authentication and payload hash headers required by the signed
+	 * Apply only the authentication and payload hash headers required by the signed
 	 * request. Other request headers are already present on the original builder and must
 	 * not be rewritten.
 	 * @param builder original JDK request builder

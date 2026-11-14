@@ -35,10 +35,10 @@ import org.springframework.util.Assert;
  *
  * <p>
  * Requests for endpoints that are not configured for AWS authentication are returned
- * unchanged. The customizer runs with the lowest precedence so headers contributed by
- * other request customizers are present before signing. Eligible stable headers are
- * signed; intentionally unsigned headers remain on the wire.
- * </p>
+ * unchanged. The customizer declares the lowest precedence for ordered request-customizer
+ * pipelines. Named transport installation must separately append it after application
+ * customization; arbitrary transport registration order is not controlled by this value.
+ * Eligible stable headers are signed; intentionally unsigned headers remain on the wire.
  *
  * @since 0.1.0
  */
@@ -47,7 +47,7 @@ public final class RoutingAwsSigV4McpRequestCustomizer implements McpAsyncHttpCl
 	private final Map<URI, AwsSigV4McpRequestCustomizer> delegates;
 
 	/**
-	 * Creates a routing customizer.
+	 * Create a routing customizer.
 	 * @param delegates exact normalized endpoint URI to SigV4 customizer mappings
 	 * @since 0.1.0
 	 */
@@ -72,7 +72,7 @@ public final class RoutingAwsSigV4McpRequestCustomizer implements McpAsyncHttpCl
 	}
 
 	/**
-	 * Returns whether this customizer signs the given exact endpoint.
+	 * Return whether this customizer signs the given exact endpoint.
 	 * @param endpoint MCP request endpoint
 	 * @return {@code true} when the endpoint has an AWS signing configuration
 	 * @since 0.1.0

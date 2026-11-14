@@ -2,6 +2,7 @@ import io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension
 import net.ltgt.gradle.errorprone.errorprone
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.publish.maven.MavenPublication
+import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
 import org.gradle.api.tasks.compile.JavaCompile
@@ -10,6 +11,7 @@ import org.gradle.api.plugins.quality.Checkstyle
 import org.gradle.api.plugins.quality.CheckstyleExtension
 import org.gradle.external.javadoc.StandardJavadocDocletOptions
 import org.gradle.plugins.signing.SigningExtension
+import org.gradle.jvm.toolchain.JavaToolchainService
 
 plugins {
 	base
@@ -48,6 +50,11 @@ subprojects {
 			)
 			mavenBom(
 				rootProject.libs.aws.sdk.bom
+					.map { "${it.module.group}:${it.module.name}:${it.versionConstraint.requiredVersion}" }
+					.get()
+			)
+			mavenBom(
+				rootProject.libs.mcp.bom
 					.map { "${it.module.group}:${it.module.name}:${it.versionConstraint.requiredVersion}" }
 					.get()
 			)
@@ -90,6 +97,9 @@ subprojects {
 
 	tasks.withType<Test>().configureEach {
 		useJUnitPlatform()
+		javaLauncher = project.extensions.getByType<JavaToolchainService>().launcherFor {
+			languageVersion = JavaLanguageVersion.of(providers.gradleProperty("testJavaVersion").orElse("17").get().toInt())
+		}
 	}
 
 	tasks.named<Test>("test") {
@@ -122,6 +132,7 @@ subprojects {
 			encoding = "UTF-8"
 			charSet = "UTF-8"
 			addStringOption("Xdoclint:all,-missing", "-quiet")
+			addBooleanOption("Werror", true)
 		}
 	}
 
@@ -134,10 +145,26 @@ subprojects {
 		apply(plugin = "maven-publish")
 		apply(plugin = "signing")
 
+		// Verification publications share the root build directory. Root clean must
+		// finish before parallel subproject publishers create files there.
+		tasks.withType<PublishToMavenRepository>().configureEach {
+			mustRunAfter(rootProject.tasks.named("clean"))
+		}
+
 		extensions.configure<PublishingExtension> {
+			repositories {
+				maven {
+					name = "verification"
+					url = rootProject.layout.buildDirectory.dir("verification-repository").get().asFile.toURI()
+				}
+			}
 			publications {
 				create<MavenPublication>("mavenJava") {
 					from(components["java"])
+					versionMapping {
+						usage("java-api") { fromResolutionOf("runtimeClasspath") }
+						usage("java-runtime") { fromResolutionResult() }
+					}
 					pom {
 						name.set(project.name)
 						description.set(providers.provider { project.description ?: project.name })
@@ -193,6 +220,23 @@ subprojects {
 tasks.named("check") {
 	dependsOn(subprojects.map { "${it.path}:check" })
 	dependsOn("verifySourceHeaders")
+	dependsOn("verifyConsumers")
+}
+
+tasks.register<Exec>("verifyConsumers") {
+	description = "Verifies publication metadata and real Maven/Gradle starter consumers without AWS"
+	group = LifecycleBasePlugin.VERIFICATION_GROUP
+	dependsOn(publishedModules.map { ":$it:publishAllPublicationsToVerificationRepository" })
+	mustRunAfter(tasks.named("clean"))
+	val launcher = project(":spring-ai-mcp-sigv4").extensions.getByType<JavaToolchainService>().launcherFor {
+		languageVersion = JavaLanguageVersion.of(providers.gradleProperty("testJavaVersion").orElse("17").get().toInt())
+	}
+	doFirst {
+		environment("JAVA_HOME", launcher.get().metadata.installationPath.asFile.absolutePath)
+	}
+	commandLine("python3", "verification/verify_consumers.py", "--group", providers.gradleProperty("projectGroup").get(),
+		"--version", providers.gradleProperty("projectVersion").get(),
+		"--boot", libs.versions.spring.boot.get())
 }
 
 tasks.register("verifySourceHeaders") {

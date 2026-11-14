@@ -7,22 +7,17 @@ That line exposed one effectively unique async HTTP request-customizer slot, so 
 created one global SigV4 signer and required applications to manually compose other headers.
 All AWS connection entries also had to share a region and service name.
 
-## Spring AI 2.0 redesign
+## Spring AI 2.0.2 / MCP SDK 2.1 baseline
 
-Spring AI 2.0.0 moved named transport customization to `McpClientCustomizer<Builder>`.
-Current upstream additionally collects ordered sync and async HTTP request-customizer beans.
-The library contributes one routing request customizer and, within the supported Spring AI 2.0.x
-line, activates a capability-detected fallback transport bridge only when native composition is
-missing. The fallback is not a Spring AI 1.x support path and is avoided whenever the native
-request-customizer capability is present.
+The first public release now requires Spring AI 2.0.2 with MCP SDK 2.1.0.
+Spring AI supplies native ordered request-customizer collection. The SDK supplies additive
+builder APIs and access to the customizer list. The former reflection-based fallback has been removed.
 
-Consequences:
-
-- application customizers coexist without a manual delegating bean;
-- each named AWS connection can use its own signing scope;
-- public connections in the same application are not signed;
-- an authentication/transport name mismatch is detected at startup;
-- Java 17 is sufficient, matching current Spring AI.
+SigV4 is appended only to configured named transports. It is not a global request-customizer
+bean, so public and Bearer-authenticated aliases of the same endpoint stay independent.
+Each AWS connection retains its region/service scope, HTTPS validation, and exact endpoint boundary.
+Local HTTP tests verify native sync/async headers, earlier named customizers, session DELETE,
+multiple scopes, and signed/unsigned aliases without inspecting private transport fields.
 
 ## Ideas intentionally not used
 
@@ -36,15 +31,12 @@ properties it does not own and mix transport and authentication concerns.
 Spring AI 2.0 already provides ordered request-customizer composition, so an extension-specific
 contributor API would duplicate framework behavior.
 
-### Named transport customizer replacement
+### Replacing the transport request customizer
 
-Calling `asyncHttpRequestCustomizer(...)` from a named transport customizer replaces the
-customizer Spring AI already installed.
-The fallback compatibility bridge for the applicable Spring AI 2.0.x API shape must use that hook,
-so it first collects sync and async request-customizer beans into one
-`DelegatingMcpAsyncHttpClientRequestCustomizer` and appends SigV4 last. Direct mutations made by
-other named transport customizers cannot be inspected because the builder exposes setters but no
-getter; those remain an explicit-composition case.
+SDK 2.1's deprecated singular setters replace the existing list. This library instead calls
+`addAsyncHttpRequestCustomizer(...)`, preserving prior entries. Applications that install later
+transport customizers must still arrange signing last; the SDK cannot preserve a signature across
+subsequent request mutation.
 
 ## Future consideration
 

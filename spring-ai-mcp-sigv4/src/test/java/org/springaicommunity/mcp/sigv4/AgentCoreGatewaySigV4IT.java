@@ -48,10 +48,10 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * Bedrock AgentCore Gateway).
  *
  * <p>
- * Runs only when AWS credentials and {@code MCP_GW_URL} are present. Optional:
- * {@code MCP_GW_ENDPOINT} (default {@code /mcp}), {@code MCP_IAM_AUTH_SERVICE} (default
- * {@code bedrock-agentcore}), {@code MCP_IAM_IT_TOOL_NAME},
- * {@code MCP_IAM_IT_TOOL_ARGUMENTS_JSON}, {@code MCP_IAM_IT_EXPECTED_RESULT_JSON}. Set
+ * Runs only when {@code MCP_GW_URL} is present. Usable AWS credentials,
+ * {@code MCP_IAM_IT_TOOL_NAME}, and {@code MCP_IAM_IT_TOOL_ARGUMENTS_JSON} are required.
+ * Optional: {@code MCP_GW_ENDPOINT} (default {@code /mcp}), {@code MCP_IAM_AUTH_SERVICE}
+ * (default {@code bedrock-agentcore}), {@code MCP_IAM_IT_EXPECTED_RESULT_JSON}. Set
  * {@code MCP_IAM_IT_TRACING=true} with a real Java agent to require an active trace and
  * verify the late-bound header signing policy against the live gateway.
  * </p>
@@ -101,7 +101,7 @@ class AgentCoreGatewaySigV4IT {
 			var signer = new AwsSigV4McpRequestCustomizer(credentialsProvider, region, serviceName, resolvedEndpoint);
 			var transport = HttpClientStreamableHttpTransport.builder(gatewayUrl)
 				.endpoint(endpoint)
-				.asyncHttpRequestCustomizer((builder, method, uri, body, context) -> {
+				.addAsyncHttpRequestCustomizer((builder, method, uri, body, context) -> {
 					if (tracing) {
 						GlobalOpenTelemetry.getPropagators()
 							.getTextMapPropagator()
@@ -155,8 +155,12 @@ class AgentCoreGatewaySigV4IT {
 	private static void invokeTool(McpSyncClient client, List<McpSchema.Tool> discoveredTools) {
 		String configuredToolName = System.getenv("MCP_IAM_IT_TOOL_NAME");
 		String argumentsJson = System.getenv("MCP_IAM_IT_TOOL_ARGUMENTS_JSON");
-		assumeTrue(configuredToolName != null && !configuredToolName.isBlank(), "MCP_IAM_IT_TOOL_NAME is not set");
-		assumeTrue(argumentsJson != null && !argumentsJson.isBlank(), "MCP_IAM_IT_TOOL_ARGUMENTS_JSON is not set");
+		assertThat(configuredToolName != null && !configuredToolName.isBlank())
+			.as("MCP_IAM_IT_TOOL_NAME is required when live verification is enabled")
+			.isTrue();
+		assertThat(argumentsJson != null && !argumentsJson.isBlank())
+			.as("MCP_IAM_IT_TOOL_ARGUMENTS_JSON is required when live verification is enabled")
+			.isTrue();
 
 		String toolName = resolveToolName(configuredToolName, discoveredTools);
 		McpSchema.CallToolResult result = client

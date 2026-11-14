@@ -12,10 +12,12 @@ Thank you for helping improve Spring AI MCP SigV4.
 
 ## Development workflow
 
-Use the Java 17.0.19 Liberica toolchain declared in `.sdkmanrc` and run:
+Use the Java 17.0.19 Liberica toolchain declared in `.sdkmanrc`, Python 3, and Maven 3.9+.
+Install Java 21 as well to reproduce the runtime matrix. Run:
 
 ```shell
 ./gradlew clean check publishToMavenLocal
+./gradlew check -PtestJavaVersion=21
 ```
 
 Use the focused module test task while iterating, but run the full command before opening a pull
@@ -33,7 +35,8 @@ To apply the repository's Spring Java Format rules, run:
 ./gradlew format
 ```
 
-`check` also runs the Spring AI-aligned Checkstyle rules and compiles main sources with Error Prone
+`check` also verifies published artifacts with independent Maven and Gradle consumers; see
+`verification/README.md`. It runs the Spring AI-aligned Checkstyle rules and compiles main sources with Error Prone
 and NullAway in JSpecify mode.
 Do not suppress a rule unless the framework requires a construct that the rule cannot model; keep
 such suppressions narrow and explain the reason in code or build configuration.
@@ -44,6 +47,10 @@ Java sources follow Spring style: tabs, LF line endings, explicit imports, one t
 file, and one sentence per line in Markdown where practical.
 
 Public API changes require JavaDoc, an `@since` tag, compatibility analysis, and a changelog entry.
+Follow the [Spring Framework Javadoc conventions](https://github.com/spring-projects/spring-framework/blob/main/CONTRIBUTING.md#javadoc):
+imperative method summaries, useful parameter/return contracts, and paragraphs beginning with
+`<p>`. Document configuration fields so their descriptions reach generated metadata.
+Javadoc warnings fail the build.
 New configuration properties require generated/additional metadata, a binding test, and updates to
 `docs/configuration.md`.
 

@@ -1,5 +1,6 @@
 .gradle/
 build/
+target/
 out/
 bin/
 .idea/
@@ -15,3 +16,5 @@ bin/
 .project
 .settings/
 .vscode/
+
+__pycache__/

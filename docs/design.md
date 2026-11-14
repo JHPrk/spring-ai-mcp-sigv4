@@ -22,14 +22,14 @@ autoconfigure
   McpAwsProperties
   McpSigV4AutoConfiguration
   OnAnyMcpAwsConnectionCondition
-  OnMissingNativeMcpRequestCustomizerSupportCondition
-  FallbackMcpSigV4TransportCustomizer
+  McpSigV4TransportCustomizer
 
 starter
   core + autoconfigure + official Spring AI MCP client starter
 ```
 
-The core has no Spring Boot dependency.
+The core depends on MCP core, Spring Core, and AWS APIs; it has no Spring Boot, Spring AI model,
+or JSON mapper dependency. Manual transport users supply their own MCP JSON mapper implementation.
 The autoconfigure module keeps Boot and Spring AI autoconfiguration types optional in its
 published dependency metadata, while the starter supplies them at runtime.
 
@@ -38,9 +38,8 @@ published dependency metadata, while the starter supplies them at runtime.
 ```text
 Spring AI named MCP connection
   -> application request customizers (ordered)
-  -> RoutingAwsSigV4McpRequestCustomizer
-       -> exact endpoint configured? no: unchanged request
-       -> yes: AwsSigV4McpRequestCustomizer
+  -> connection name configured? no: unchanged transport
+  -> yes: endpoint-bound AwsSigV4McpRequestCustomizer
             -> SigV4-owned header present? yes: reject
             -> snapshot wire headers once; select eligible signing headers
             -> adapt only signing headers to SdkHttpRequest
@@ -60,15 +59,12 @@ released with the application context.
 
 ## Why exact endpoint routing
 
-Spring AI 2.0.0 exposes a named transport builder customizer, while current upstream also composes
-request-customizer beans globally.
-The library uses capability detection: it installs a fallback named transport bridge only when
-native request-customizer composition is absent, then backs that bridge off when the native
-capability is present. The fallback bridge converts ordered sync request customizers to async,
-adds ordered async customizers, and appends SigV4 to an MCP SDK delegating customizer. It is a
-Spring AI 2.0.x integration path, not a Spring AI 1.x compatibility layer.
-Routing by the actual endpoint passed to the request hook supports different signing scopes per
-connection without signing public endpoints.
+Spring AI 2.0.2 collects ordered request-customizer beans globally. Registering the SigV4 router
+as such a bean would also sign unsigned connection aliases of a configured URL. Instead the library
+appends an endpoint-bound signer only to each configured transport name using the MCP SDK 2.1
+additive customizer API. The public endpoint router remains available for manual use.
+Existing native request customizers and earlier application transport customizers remain before signing.
+There is no capability detection or compatibility bridge for older API shapes.
 
 The route is not inferred from arbitrary request hosts.
 It is built from Spring AI's configured `url` and `endpoint`, and configuration-name mismatches
@@ -78,7 +74,7 @@ fail startup.
 
 - HTTPS is required by auto-configuration unless explicitly relaxed per connection.
 - Authentication configuration with no matching transport is rejected.
-- Duplicate endpoint routes with conflicting signing scopes or additional header exclusions are rejected.
+- Named connections retain independent signing scopes and header exclusions, including URL aliases.
 - Public/unconfigured endpoints are intentionally left unsigned.
 - Both routed and directly installed signers are bound to exact normalized endpoint URIs.
 - Diagnostic strings report counts and scopes but never credentials or endpoint URLs.
@@ -101,7 +97,7 @@ Unsigned headers stay on the original JDK builder with their values intact.
 Only signer-owned authentication/hash output is applied back; the policy does not suppress
 signer-generated host, date, session-token, or payload-hash metadata.
 Pre-existing signer-owned headers are rejected before both policy evaluation and credential lookup.
-The serialized body, method, endpoint, credential lookup schedule, and endpoint router are unchanged.
+The header policy does not alter the serialized body, method, endpoint, or credential lookup schedule.
 
 For example, signing `traceparent=A` and then sending `traceparent=B` fails verification if that
 header participates in the signature. Instrumentation legitimately creates an HTTP client child
@@ -117,7 +113,9 @@ an explicit policy. `all()` restores previous library-level eligibility, subject
 A global Spring policy plus exact per-connection exclusions covers the supported extension model.
 It does not select arbitrary different policy beans by connection or detect observability vendors.
 
-Spring `LOWEST_PRECEDENCE` still places SigV4 after application/MCP customizers. It cannot reorder
+Named installation appends signing after the existing request-customizer pipeline. Transport
+customizers registered later must not modify signed requests; `@Order` alone does not enforce
+transport registration order in Spring AI 2.0.2. No Spring ordering can reorder
 Java-agent advice at `HttpClient.send/sendAsync`. Disabling OTel/ADOT JDK instrumentation loses useful
 observability and is not the library solution; neither an HttpClient wrapper nor agent-ordering
 assumptions are required.
@@ -126,16 +124,16 @@ assumptions are required.
 
 - [AWS SigV4 guidance](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv-create-signed-request.html)
   recommends excluding volatile transport headers that intermediaries may mutate.
-- [AWS SDK Java 2.54.6 canonical headers](https://github.com/aws/aws-sdk-java-v2/blob/2.54.6/core/http-auth-aws/src/main/java/software/amazon/awssdk/http/auth/aws/internal/signer/V4CanonicalRequest.java)
+- [AWS SDK Java 2.59.0 canonical headers](https://github.com/aws/aws-sdk-java-v2/blob/2.59.0/core/http-auth-aws/src/main/java/software/amazon/awssdk/http/auth/aws/internal/signer/V4CanonicalRequest.java)
   exclude `connection`, `x-amzn-trace-id`, `user-agent`, `expect`, `transfer-encoding`, and
   `x-forwarded-for`. The library explicitly excludes X-Ray as a propagation format and leaves
   the remaining AWS exclusions to `AwsV4HttpSigner`. No internal AWS API is imported.
 - [Botocore](https://github.com/boto/botocore/blob/develop/botocore/auth.py) uses a signed-header
   blacklist; [Smithy TypeScript](https://github.com/smithy-lang/smithy-typescript/blob/main/packages/signature-v4/src/getCanonicalHeaders.ts)
   offers signable/unsignable header selection.
-- [MCP Java SDK 2.0.0 transport](https://github.com/modelcontextprotocol/java-sdk/blob/v2.0.0/mcp-core/src/main/java/io/modelcontextprotocol/client/transport/HttpClientStreamableHttpTransport.java)
+- [MCP Java SDK 2.1.0 transport](https://github.com/modelcontextprotocol/java-sdk/blob/v2.1.0/mcp-core/src/main/java/io/modelcontextprotocol/client/transport/HttpClientStreamableHttpTransport.java)
   runs the customizer, builds the request, then calls `sendAsync` for GET, POST, and DELETE.
-- [OpenTelemetry JDK HTTP instrumentation](https://github.com/open-telemetry/opentelemetry-java-instrumentation/tree/v2.31.1/instrumentation/java-http-client/javaagent/src/main/java/io/opentelemetry/javaagent/instrumentation/javahttpclient)
+- [OpenTelemetry JDK HTTP instrumentation](https://github.com/open-telemetry/opentelemetry-java-instrumentation/tree/v2.32.0/instrumentation/java-http-client/javaagent/src/main/java/io/opentelemetry/javaagent/instrumentation/javahttpclient)
   starts a client span around send and injects context on request-header access.
 - [Spring AI AgentCore OTel extension](https://github.com/spring-ai-community/spring-ai-agentcore/blob/main/spring-ai-agentcore-otel-extension/README.md)
   documents ADOT Java-agent deployment as a supported observability model.

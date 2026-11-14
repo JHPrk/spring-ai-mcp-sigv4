@@ -8,9 +8,10 @@ spring:
             agentcore:
               url: ${MCP_GW_URL}
               endpoint: ${MCP_GW_ENDPOINT:/mcp}
-        authorization:
-          aws:
-            connections:
-              agentcore:
-                region: ${AWS_REGION:ap-northeast-2}
+
+mcp:
+  sigv4:
+    connections:
+      agentcore:
+        region: ${AWS_REGION:ap-northeast-2}
 

@@ -1,7 +1,8 @@
 description = "AWS Signature Version 4 request signing for Spring AI MCP HTTP clients"
 
 dependencies {
-	api(libs.spring.ai.mcp)
+	api(libs.mcp.core)
+	api(libs.spring.core)
 	api(libs.aws.auth)
 	api(libs.aws.regions)
 
@@ -9,13 +10,22 @@ dependencies {
 	implementation(libs.reactor.core)
 
 	testImplementation(libs.reactor.test)
+	testImplementation(libs.mcp.json.jackson3)
+}
+
+sourceSets.named("test") {
+	java.srcDir(rootProject.file("verification/core-consumer/src/test/java"))
 }
 
 val testSourceSet = extensions.getByType<JavaPluginExtension>().sourceSets.named("test")
 
 tasks.register<Test>("integrationTest") {
 	description = "Runs opt-in integration tests"
+	systemProperty("logback.configurationFile", rootProject.file("verification/logback-live.xml").absolutePath)
+	systemProperty("jdk.httpclient.HttpClient.log", "")
 	group = LifecycleBasePlugin.VERIFICATION_GROUP
+	outputs.upToDateWhen { false }
+	outputs.doNotCacheIf("Live AWS verification must run against the current environment") { true }
 	testClassesDirs = testSourceSet.get().output.classesDirs
 	classpath = testSourceSet.get().runtimeClasspath
 	shouldRunAfter(tasks.named("test"))
@@ -31,7 +41,7 @@ val otelAgent = configurations.create("otelAgent") {
 }
 
 dependencies {
-	add(otelAgent.name, "io.opentelemetry.javaagent:opentelemetry-javaagent:2.31.1")
+	add(otelAgent.name, "io.opentelemetry.javaagent:opentelemetry-javaagent:2.32.0")
 	testImplementation("io.opentelemetry:opentelemetry-api")
 }
 
@@ -48,6 +58,20 @@ val otelAgentTest = tasks.register<Test>("otelAgentTest") {
 	testClassesDirs = testSourceSet.get().output.classesDirs
 	classpath = testSourceSet.get().runtimeClasspath
 	useJUnitPlatform { includeTags("otel-agent") }
+	useHttpInstrumentation(agentFiles)
+}
+
+tasks.named("check") { dependsOn(otelAgentTest) }
+
+// Live instrumentation is explicit and never changes the default AWS-free check lifecycle.
+tasks.named<Test>("integrationTest") {
+	if (providers.gradleProperty("agentCoreItTracing").orElse("false").get().toBoolean()) {
+		environment("MCP_IAM_IT_TRACING", "true")
+		useHttpInstrumentation(agentFiles)
+	}
+}
+
+fun Test.useHttpInstrumentation(agentFiles: org.gradle.api.file.FileCollection) {
 	inputs.files(agentFiles).withPropertyName("otelAgent")
 	systemProperty("otel.javaagent.enabled", "true")
 	systemProperty("otel.sdk.disabled", "false")
@@ -61,5 +85,3 @@ val otelAgentTest = tasks.register<Test>("otelAgentTest") {
 	systemProperty("otel.javaagent.logging", "none")
 	doFirst { jvmArgs("-javaagent:${agentFiles.singleFile.absolutePath}") }
 }
-
-tasks.named("check") { dependsOn(otelAgentTest) }

@@ -18,19 +18,24 @@ package org.springaicommunity.mcp.sigv4.autoconfigure;
 
 import java.net.URI;
 import java.net.http.HttpRequest;
+import java.util.ArrayList;
 import java.util.List;
 
+import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
+import io.modelcontextprotocol.client.transport.customizer.DelegatingMcpAsyncHttpClientRequestCustomizer;
+import io.modelcontextprotocol.client.transport.customizer.McpAsyncHttpClientRequestCustomizer;
 import io.modelcontextprotocol.common.McpTransportContext;
 import org.junit.jupiter.api.Test;
 import org.springaicommunity.mcp.sigv4.AwsSigV4HeaderSigningPolicies;
 import org.springaicommunity.mcp.sigv4.AwsSigV4HeaderSigningPolicy;
-import org.springaicommunity.mcp.sigv4.RoutingAwsSigV4McpRequestCustomizer;
 import reactor.core.publisher.Mono;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 
+import org.springframework.ai.mcp.client.common.autoconfigure.properties.McpStreamableHttpClientProperties;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.ApplicationContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -49,7 +54,7 @@ class McpHeaderSigningPolicyTests {
 	void usesDefaultPolicyWhenNoExclusionsConfigured() {
 		this.runner.run(context -> {
 			assertThat(context).hasSingleBean(AwsSigV4HeaderSigningPolicy.class);
-			HttpRequest request = sign(context.getBean(RoutingAwsSigV4McpRequestCustomizer.class), "first");
+			HttpRequest request = sign(context, "first");
 			assertThat(signedHeaders(request)).contains("x-first", "x-second", "x-stable")
 				.doesNotContain("traceparent");
 		});
@@ -63,9 +68,8 @@ class McpHeaderSigningPolicyTests {
 					AWS + "second.signing.additional-unsigned-headers[0]=X-Second")
 			.run(context -> {
 				assertThat(context).hasNotFailed();
-				var router = context.getBean(RoutingAwsSigV4McpRequestCustomizer.class);
-				HttpRequest first = sign(router, "first");
-				HttpRequest second = sign(router, "second");
+				HttpRequest first = sign(context, "first");
+				HttpRequest second = sign(context, "second");
 				assertThat(signedHeaders(first)).contains("x-second", "x-stable")
 					.doesNotContain("traceparent", "x-first");
 				assertThat(signedHeaders(second)).contains("x-first", "x-stable")
@@ -83,21 +87,21 @@ class McpHeaderSigningPolicyTests {
 			.run(context -> {
 				assertThat(context).hasSingleBean(AwsSigV4HeaderSigningPolicy.class);
 				assertThat(context.getBean(AwsSigV4HeaderSigningPolicy.class)).isSameAs(base);
-				HttpRequest request = sign(context.getBean(RoutingAwsSigV4McpRequestCustomizer.class), "first");
+				HttpRequest request = sign(context, "first");
 				assertThat(signedHeaders(request)).contains("traceparent", "x-stable")
 					.doesNotContain("x-first", "x-second");
 			});
 	}
 
 	@Test
-	void rejectsDifferentExclusionsForAliasesOfSameEndpoint() {
+	void keepsDifferentExclusionsForNamedConnectionsAtTheSameEndpoint() {
 		this.runner
 			.withPropertyValues(TRANSPORT + "alias.url=https://first.example", AWS + "alias.region=us-east-1",
 					AWS + "alias.signing.additional-unsigned-headers[0]=X-First")
 			.run(context -> {
-				assertThat(context).hasFailed();
-				assertThat(context.getStartupFailure()).hasRootCauseMessage(
-						"MCP connections resolving to the same endpoint have conflicting AWS signing scopes");
+				assertThat(context).hasNotFailed();
+				assertThat(signedHeaders(sign(context, "first"))).contains("x-first");
+				assertThat(signedHeaders(sign(context, "alias"))).doesNotContain("x-first");
 			});
 	}
 
@@ -109,13 +113,18 @@ class McpHeaderSigningPolicyTests {
 					AWS + "first.signing.additional-unsigned-headers[0]=x-first")
 			.run(context -> {
 				assertThat(context).hasNotFailed();
-				assertThat(signedHeaders(sign(context.getBean(RoutingAwsSigV4McpRequestCustomizer.class), "first")))
-					.doesNotContain("x-first", "traceparent");
+				assertThat(signedHeaders(sign(context, "first"))).doesNotContain("x-first", "traceparent");
 			});
 	}
 
-	private static HttpRequest sign(RoutingAwsSigV4McpRequestCustomizer router, String connection) {
-		URI endpoint = URI.create("https://" + connection + ".example/mcp");
+	private static HttpRequest sign(ApplicationContext context, String connection) {
+		var parameters = context.getBean(McpStreamableHttpClientProperties.class).getConnections().get(connection);
+		var transport = HttpClientStreamableHttpTransport.builder(parameters.url());
+		context.getBean(McpSigV4TransportCustomizer.class).customize(connection, transport);
+		List<McpAsyncHttpClientRequestCustomizer> customizers = new ArrayList<>();
+		transport.asyncHttpRequestCustomizers(customizers::addAll);
+		var router = new DelegatingMcpAsyncHttpClientRequestCustomizer(customizers);
+		URI endpoint = URI.create(parameters.url()).resolve("/mcp");
 		var builder = HttpRequest.newBuilder(endpoint)
 			.GET()
 			.header("TraceParent", "parent")

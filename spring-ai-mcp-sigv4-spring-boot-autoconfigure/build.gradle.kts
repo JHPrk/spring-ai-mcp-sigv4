@@ -4,13 +4,20 @@ dependencies {
 	implementation(project(":spring-ai-mcp-sigv4"))
 
 	compileOnly(libs.spring.boot.autoconfigure)
+	compileOnly(libs.spring.ai.mcp)
 	compileOnly(libs.spring.ai.autoconfigure.mcp.client.common)
 
 	annotationProcessor(libs.spring.boot.autoconfigure.processor)
 	annotationProcessor(libs.spring.boot.configuration.processor)
 
 	testImplementation(libs.spring.boot.autoconfigure)
+	testImplementation(libs.spring.ai.mcp)
 	testImplementation(libs.spring.ai.autoconfigure.mcp.client.common)
 	testImplementation(libs.spring.ai.autoconfigure.mcp.client.httpclient)
+	testImplementation(libs.spring.cloud.aws.starter)
+}
+
+tasks.named<JavaCompile>("compileJava") {
+	inputs.files(tasks.named("processResources"))
 }
 

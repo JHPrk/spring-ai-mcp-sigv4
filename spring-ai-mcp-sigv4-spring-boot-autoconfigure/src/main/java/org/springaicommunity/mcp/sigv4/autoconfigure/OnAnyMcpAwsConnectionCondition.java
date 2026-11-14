@@ -25,13 +25,26 @@ import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.annotation.ConditionContext;
 import org.springframework.core.type.AnnotatedTypeMetadata;
+import org.springframework.util.Assert;
 
-/** Matches when at least one MCP AWS connection is configured. */
+/**
+ * Match configured AWS connections using the binder rather than a collection property
+ * presence check. Reject the old namespace to prevent silently disabled signing.
+ *
+ * @since 0.1.0
+ */
 final class OnAnyMcpAwsConnectionCondition extends SpringBootCondition {
 
 	@Override
 	public ConditionOutcome getMatchOutcome(ConditionContext context, AnnotatedTypeMetadata metadata) {
-		Map<String, McpAwsProperties.Connection> connections = Binder.get(context.getEnvironment())
+		Binder binder = Binder.get(context.getEnvironment());
+		boolean legacyConfigured = binder
+			.bind("spring.ai.mcp.client.authorization.aws.connections",
+					Bindable.mapOf(String.class, McpAwsProperties.Connection.class))
+			.isBound();
+		Assert.state(!legacyConfigured,
+				"Move AWS signing settings from spring.ai.mcp.client.authorization.aws.connections to mcp.sigv4.connections");
+		Map<String, McpAwsProperties.Connection> connections = binder
 			.bind(McpAwsProperties.CONFIG_PREFIX + ".connections",
 					Bindable.mapOf(String.class, McpAwsProperties.Connection.class))
 			.orElse(Map.of());

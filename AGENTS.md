@@ -19,7 +19,7 @@ signing APIs.
 ## Security invariants
 
 - Sign only exact endpoints configured under
-  `spring.ai.mcp.client.authorization.aws.connections`.
+  `mcp.sigv4.connections`.
 - Require HTTPS by default. `allow-insecure-http` is only for trusted local tests.
 - Resolve credentials for every request and never cache, log, serialize, or expose them.
 - Never log endpoint URLs, `Authorization`, `X-Amz-Date`, `X-Amz-Security-Token`, account IDs, or
@@ -37,12 +37,13 @@ signing APIs.
 ## Compatibility invariants
 
 - Java 17 is the baseline.
-- The `0.1.x` line targets Spring AI `2.0.x` and Spring Boot `4.1.x`.
-- Spring AI 2.0.0 needs the named transport compatibility bridge. Later releases with native
-  request-customizer collection must bypass that bridge.
-- A direct transport builder call to `httpRequestCustomizer(...)` or
-  `asyncHttpRequestCustomizer(...)` remains last-writer-wins because the MCP SDK exposes no
-  getter. Do not claim that this case is automatically composed.
+- The `0.1.x` line requires Spring AI `2.0.2+` within `2.0.x`, Boot `4.1.2+` within `4.1.x`,
+  and the Spring AI-aligned MCP SDK `2.1.0` baseline.
+- Install signing only through the named transport hook and the SDK's additive customizer API.
+  Never register the router as a global request-customizer bean: unsigned URL aliases must stay unsigned.
+- Keep signing after all application request customization. Do not rely on `@Order` alone for
+  third-party transport customizers; Spring AI iterates those in registration order.
+- Do not restore reflection-based capability detection or the 2.0.0 fallback bridge.
 - Request bodies are nullable for bodyless GET and DELETE calls, even though the repository uses
   package-level `@NullMarked`.
 
@@ -65,7 +66,7 @@ Run before handing off a change:
 ./gradlew clean check publishToMavenLocal
 ```
 
-`check` includes the local `otelAgentTest` with a real javaagent and no external exporter.
+`check` includes isolated Maven/Gradle publication consumers and the local `otelAgentTest` with a real javaagent and no external exporter.
 Keep that regression deterministic and keep all OTel artifacts test-only.
 
 When AWS integration behavior changes, also run `AgentCoreGatewaySigV4IT` with the environment
