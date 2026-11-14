@@ -145,6 +145,7 @@ Never mutate a signed body, URI, method, or header after the signer runs.
 Javaagent propagation is handled separately by the volatile-header policy below.
 
 Earlier customizers must also preserve the transport's endpoint and method: a mismatch between the final JDK builder and the MCP customization arguments fails before credential resolution.
+Named connections also reject a transport endpoint changed from the configured signing scope before sending any request; they never fall back to unsigned delivery.
 The serialized body must remain unchanged.
 The signer hashes the supplied UTF-8 body and does not consume the JDK body publisher to inspect changes made by application code.
 

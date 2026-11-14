@@ -38,6 +38,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.StringUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -61,13 +62,7 @@ class AgentCoreGatewayStarterIT {
 		String region = System.getenv("AWS_REGION");
 		assertThat(region != null && !region.isBlank()).as("AWS_REGION is required").isTrue();
 		AwsCredentials credentials;
-		try (var context = new SpringApplicationBuilder(LiveApplication.class).web(WebApplicationType.NONE)
-			.properties(Map.of("spring.main.banner-mode", "off", "logging.level.root", "OFF",
-					"spring.ai.mcp.client.type", "ASYNC", "spring.ai.mcp.client.request-timeout", "30s",
-					"spring.ai.mcp.client.streamable-http.connections.agentcore.url", url,
-					"spring.ai.mcp.client.streamable-http.connections.agentcore.endpoint", url,
-					"mcp.sigv4.connections.agentcore.region", region))
-			.run()) {
+		try (var context = application(url, System.getenv("MCP_GW_ENDPOINT"), region).run()) {
 			List<McpAsyncClient> clients = context.getBean("mcpAsyncClients", List.class);
 			assertThat(clients).hasSize(1);
 			var client = clients.get(0);
@@ -82,8 +77,7 @@ class AgentCoreGatewayStarterIT {
 				.toList();
 			assertThat(callbacks.size()).as("unique configured Gateway callback").isEqualTo(1);
 			String response = callbacks.get(0).call(arguments);
-			assertThat(response.contains(echoMessage(arguments))).as("echo arguments propagated through ToolCallback")
-				.isTrue();
+			assertEchoResponse(response, arguments);
 			credentials = context.getBean(AwsCredentialsProvider.class).resolveCredentials();
 			client.closeGracefully().block(Duration.ofSeconds(30));
 		}
@@ -95,14 +89,44 @@ class AgentCoreGatewayStarterIT {
 		assertThat(output.getAll().contains("AWS4-HMAC-SHA256")).as("signed authorization redacted").isFalse();
 	}
 
-	private static String echoMessage(String arguments) {
+	static SpringApplicationBuilder application(String url, String configuredEndpoint, String region) {
+		String endpoint = StringUtils.hasText(configuredEndpoint) ? configuredEndpoint : "/mcp";
+		return new SpringApplicationBuilder(LiveApplication.class).web(WebApplicationType.NONE)
+			.properties(Map.of("spring.main.banner-mode", "off", "logging.level.root", "OFF",
+					"spring.ai.mcp.client.type", "ASYNC", "spring.ai.mcp.client.request-timeout", "30s",
+					"spring.ai.mcp.client.streamable-http.connections.agentcore.url", url,
+					"spring.ai.mcp.client.streamable-http.connections.agentcore.endpoint", endpoint,
+					"mcp.sigv4.connections.agentcore.region", region));
+	}
+
+	static void assertEchoResponse(String response, String arguments) {
+		var mapper = new ObjectMapper();
 		try {
-			Object message = new ObjectMapper().readValue(arguments, Map.class).get("message");
+			Map<?, ?> input = mapper.readValue(arguments, Map.class);
+			Object message = input == null ? null : input.get("message");
 			assertThat(message instanceof String).as("live echo message must be a string").isTrue();
-			return (String) message;
+			List<?> content = mapper.readValue(response, List.class);
+			// ToolCallback content can omit the MCP wire type discriminator.
+			boolean matches = content != null && content.stream()
+				.anyMatch(item -> item instanceof Map<?, ?> block
+						&& (!block.containsKey("type") || "text".equals(block.get("type")))
+						&& block.get("text") instanceof String text && matchesEcho(mapper, text, message));
+			assertThat(matches).as("Gateway JSON echo must match the message argument").isTrue();
 		}
 		catch (JacksonException ex) {
-			throw new AssertionError("Live echo arguments must be a JSON object with a message");
+			// Parser exceptions can include tool inputs or results.
+			throw new AssertionError("Live echo arguments and callback content must be valid JSON");
+		}
+	}
+
+	private static boolean matchesEcho(ObjectMapper mapper, String text, Object message) {
+		try {
+			Map<?, ?> result = mapper.readValue(text, Map.class);
+			return result != null && message.equals(result.get("echo"));
+		}
+		catch (JacksonException ex) {
+			// Other text blocks can contain explanations instead of JSON.
+			return false;
 		}
 	}
 

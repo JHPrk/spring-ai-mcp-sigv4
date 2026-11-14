@@ -28,6 +28,8 @@ Its manifest is `build/verification-artifacts.sha256`.
 Both load Boot auto-configuration and deliver signed MCP initialization to a loopback server using synthetic credentials.
 A third Maven consumer delivers a signed UTF-8 request using only the core artifact and verifies that its runtime classpath contains no Spring AI, Boot, or JSON mapper.
 Maven uses an isolated cache under `build/consumer-verification/maven-local`; each run evicts the tested library version, including RC versions, while retaining third-party downloads.
+Consumer verification requires the expected test class to execute successfully, with no failures, errors, or skipped tests.
+`verifyConsumerReportValidation`, included in `check`, tests rejection of missing, empty, unrelated, skipped, and unsuccessful reports for all three consumers.
 Consumer logs are in `build/consumer-verification/<kind>/verification.log`.
 CI runs these checks on Java 17/21 and tests an RC on Java 17.
 All generated artifacts stay in ignored build directories.
@@ -61,7 +63,8 @@ These tasks do not provision resources:
 The core test verifies initialization, discovery, and invocation.
 `-PagentCoreItTracing=true` attaches the agent, disables exporters, and requires active propagation that remains present but unsigned.
 Add `-PotelAgentJar=/absolute/path/aws-opentelemetry-agent.jar` to use ADOT instead.
-The starter test uses Boot's actual asynchronous MCP client and `AsyncMcpToolCallbackProvider`; it expects an echo tool accepting a JSON `message` string and requires `AWS_REGION`.
+The starter test uses Boot's actual asynchronous MCP client and `AsyncMcpToolCallbackProvider`; it expects an echo tool accepting a JSON `message` string and returning a JSON object with the same string in `echo`, and requires `AWS_REGION`.
+It honors `MCP_GW_ENDPOINT`, defaulting to `/mcp`, and compares decoded JSON values so empty strings and escaped characters are checked correctly.
 Set `MCP_IAM_IT_EXPECTED_RESULT_JSON` to compare the core tool response without printing its contents.
 Keep wire logging disabled; never publish raw request headers, session IDs, tool data, or endpoints.
 

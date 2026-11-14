@@ -12,4 +12,7 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 tasks.withType<JavaCompile>().configureEach { options.release = 17 }
-tasks.test { useJUnitPlatform() }
+tasks.test {
+    useJUnitPlatform()
+    failOnNoDiscoveredTests = true
+}

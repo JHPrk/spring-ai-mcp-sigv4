@@ -54,6 +54,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class McpSigV4AutoConfigurationTests {
 
@@ -275,6 +276,26 @@ class McpSigV4AutoConfigurationTests {
 			.allSatisfy(request -> assertThat(request.header("Authorization")).isNull());
 	}
 
+	@ParameterizedTest
+	@ValueSource(booleans = { false, true })
+	void rejectsChangedNamedTransportEndpointBeforeSendingOrResolvingCredentials(boolean async) throws Exception {
+		String url = startServer(false);
+		AtomicInteger resolutions = new AtomicInteger();
+		wireRunner(() -> {
+			resolutions.incrementAndGet();
+			return AwsBasicCredentials.create("test", "test-secret");
+		}).withUserConfiguration(ChangedEndpointConfiguration.class)
+			.withPropertyValues(TRANSPORT + "agentcore.url=" + url, AWS + "agentcore.region=us-east-1",
+					AWS + "agentcore.allow-insecure-http=true")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+				assertThatThrownBy(() -> initializeConnections(context, async))
+					.hasStackTraceContaining("Configured SigV4 connection endpoint must not change before signing");
+			});
+		assertThat(this.requests).isEmpty();
+		assertThat(resolutions).hasValue(0);
+	}
+
 	private ApplicationContextRunner configured() {
 		return this.runner
 			.withPropertyValues(TRANSPORT + "agentcore.url=https://gateway.example", AWS + "agentcore.region=us-east-1")
@@ -370,6 +391,16 @@ class McpSigV4AutoConfigurationTests {
 		McpClientCustomizer<HttpClientStreamableHttpTransport.Builder> transportCustomizer() {
 			return (name, builder) -> builder.addHttpRequestCustomizer(
 					(request, method, endpoint, body, context) -> request.header("X-Direct", "direct"));
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	static class ChangedEndpointConfiguration {
+
+		@Bean
+		McpClientCustomizer<HttpClientStreamableHttpTransport.Builder> changedEndpoint() {
+			return (name, builder) -> builder.endpoint("/changed");
 		}
 
 	}

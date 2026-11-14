@@ -30,6 +30,64 @@ fun Document.value(path: String): String = XPathFactory.newInstance().newXPath()
 @Suppress("UNCHECKED_CAST")
 fun json(text: String): Map<String, Any?> = JsonSlurper().parseText(text) as Map<String, Any?>
 
+fun consumerReportDirectory(directory: File, kind: String): File =
+	directory.resolve(if (kind == "gradle") "build/test-results/test" else "target/surefire-reports")
+
+fun successfulConsumerReports(directory: File, kind: String): List<File> {
+	val reports = consumerReportDirectory(directory, kind)
+		.listFiles { file -> file.name.startsWith("TEST-") && file.extension == "xml" }?.toList().orEmpty()
+	check(reports.isNotEmpty()) { "Missing $kind consumer test reports" }
+	val expectedClass = if (kind == "core") "verification.PublishedCoreTests" else "verification.PublishedStarterTests"
+	val suites = reports.map { xml(it) }
+	check(suites.all { suite ->
+		listOf("failures", "errors", "skipped").all { suite.value("/testsuite/@$it").toIntOrNull() == 0 } &&
+			suite.value("/testsuite/@tests").toIntOrNull()?.let { it > 0 } == true
+	}) { "Incomplete or unsuccessful $kind consumer test suite" }
+	check(suites.any {
+		it.value("count(/testsuite/testcase[@classname='$expectedClass'][not(failure) and not(error) and not(skipped)])").toDouble() > 0
+	}) { "Expected $kind consumer tests did not execute" }
+	return reports
+}
+
+val verifyConsumerReportValidation = tasks.register("verifyConsumerReportValidation") {
+	group = "verification"
+	description = "Checks that consumer verification rejects missing, empty, skipped, or unsuccessful test reports"
+	mustRunAfter(tasks.named("clean"))
+	doLast {
+		for (kind in listOf("gradle", "maven", "core")) {
+			val directory = layout.buildDirectory.dir("consumer-report-validation/$kind").get().asFile
+			val reportDirectory = consumerReportDirectory(directory, kind)
+			reportDirectory.deleteRecursively()
+			reportDirectory.mkdirs()
+			val report = reportDirectory.resolve("TEST-consumer.xml")
+			val expectedClass = if (kind == "core") "verification.PublishedCoreTests" else "verification.PublishedStarterTests"
+			val valid = """<testsuite tests="1" failures="0" errors="0" skipped="0"><testcase classname="$expectedClass" name="delivery"/></testsuite>"""
+			report.writeText(valid)
+			successfulConsumerReports(directory, kind)
+			val invalidReports = listOf(
+				valid.replace("tests=\"1\"", "tests=\"0\"").replace(Regex("<testcase[^>]*/>"), ""),
+				valid.replace(expectedClass, "verification.UnrelatedTests"),
+				valid.replace(Regex("<testcase[^>]*/>"), ""),
+				valid.replace("skipped=\"0\"", "skipped=\"1\"").replace("/>", "><skipped/></testcase>"),
+				valid.replace("failures=\"0\"", "failures=\"1\"").replace("/>", "><failure/></testcase>"),
+				valid.replace("errors=\"0\"", "errors=\"1\"").replace("/>", "><error/></testcase>")
+			)
+			for (invalid in invalidReports) {
+				report.writeText(invalid)
+				check(runCatching { successfulConsumerReports(directory, kind) }.exceptionOrNull() is IllegalStateException) {
+					"Consumer verification accepted an invalid $kind test report"
+				}
+			}
+			report.delete()
+			check(runCatching { successfulConsumerReports(directory, kind) }.exceptionOrNull() is IllegalStateException) {
+				"Consumer verification accepted missing $kind test reports"
+			}
+		}
+	}
+}
+
+tasks.named("check") { dependsOn(verifyConsumerReportValidation) }
+
 val verifyPublication = tasks.register("verifyPublication") {
 	group = "verification"
 	description = "Checks published JARs, POMs, Gradle metadata, configuration metadata, and checksums"
@@ -103,7 +161,7 @@ val verifyPublication = tasks.register("verifyPublication") {
 val verifyConsumers = tasks.register("verifyConsumers") {
 	group = "verification"
 	description = "Runs independent Maven/Gradle consumers of the published starter and core without AWS"
-	dependsOn(verifyPublication)
+	dependsOn(verifyPublication, verifyConsumerReportValidation)
 }
 
 var previousMavenConsumer: TaskProvider<Exec>? = null
@@ -155,9 +213,8 @@ for (kind in listOf("gradle", "maven", "core")) {
 		doLast {
 			standardOutput.close()
 			check(executionResult.get().exitValue == 0) { "$kind consumer failed; see $log" }
+			val reports = successfulConsumerReports(directory, kind)
 			if (kind == "core") {
-				val reports = directory.resolve("target/surefire-reports").listFiles { file -> file.name.startsWith("TEST-") && file.extension == "xml" }
-				check(!reports.isNullOrEmpty()) { "Missing core consumer test report" }
 				for (report in reports) {
 					val classpath = xml(report).value("/testsuite/properties/property[@name='java.class.path']/@value").replace('\\', '/')
 					check(classpath.isNotBlank()) { "Missing core consumer runtime classpath" }

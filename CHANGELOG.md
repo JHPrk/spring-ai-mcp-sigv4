@@ -37,6 +37,10 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ### Fixed
 
+- Reject changed endpoints on named SigV4 transports before HTTP delivery or credential lookup.
+- Require successful execution of expected publication-consumer tests, rejecting zero-test and skipped suites.
+- Honor `MCP_GW_ENDPOINT` in starter live verification and compare JSON echo values rather than serialized substrings.
+
 - Track additional configuration metadata as a Java compilation input, including resource-only changes; verify generated descriptions and defaults in the published JAR.
 - Publish resolved dependency versions in Gradle module metadata so clean Gradle consumers can resolve the starter without relying on another build's dependency-management plugin.
 - Order verification publications after root cleanup so parallel `clean check` builds cannot delete the repository while subprojects are publishing into it.

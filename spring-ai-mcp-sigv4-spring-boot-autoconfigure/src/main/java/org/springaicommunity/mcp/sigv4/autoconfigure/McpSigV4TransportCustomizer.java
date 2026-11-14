@@ -28,7 +28,8 @@ import org.springframework.util.Assert;
  * Appends SigV4 to the SDK's existing request pipeline only for named AWS connections.
  * Application request customizers installed by Spring AI run before signing. Applications
  * must register any additional transport customizers before this auto-configured signer;
- * changing the request after signing can invalidate it.
+ * changing the request after signing can invalidate it. A configured connection whose
+ * final endpoint differs from its signing scope is rejected before transmission.
  *
  * @since 0.1.0
  */
@@ -45,7 +46,11 @@ final class McpSigV4TransportCustomizer implements McpClientCustomizer<HttpClien
 	public void customize(String name, HttpClientStreamableHttpTransport.Builder builder) {
 		AwsSigV4McpRequestCustomizer customizer = this.customizers.get(name);
 		if (customizer != null) {
-			builder.addAsyncHttpRequestCustomizer(customizer);
+			builder.addAsyncHttpRequestCustomizer((request, method, endpoint, body, context) -> {
+				Assert.state(customizer.supports(endpoint),
+						"Configured SigV4 connection endpoint must not change before signing");
+				return customizer.customize(request, method, endpoint, body, context);
+			});
 		}
 	}
 
