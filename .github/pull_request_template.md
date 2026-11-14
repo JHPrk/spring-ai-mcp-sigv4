@@ -4,7 +4,7 @@ Describe the problem and the proposed change.
 
 ## Verification
 
-- [ ] `./gradlew clean check`
+- [ ] `./gradlew clean check verifyConsumers`
 - [ ] Spring Java Format, Checkstyle, Error Prone, and NullAway pass without broad suppressions
 - [ ] Documentation and configuration metadata updated where needed
 - [ ] No credentials, signed headers, account IDs, or private endpoints included

@@ -29,13 +29,10 @@ jobs:
         with:
           distribution: liberica
           java-version: "21"
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.x"
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
       - name: Verify Java runtime, publications, and Maven/Gradle consumers
         run: >-
-          ./gradlew --no-daemon clean check publishToMavenLocal
+          ./gradlew --no-daemon clean check verifyConsumers publishToMavenLocal
           -PtestJavaVersion=${{ matrix.runtime }}
           -Dorg.gradle.java.installations.fromEnv=SIGV4_BUILD_JAVA_HOME,JAVA_HOME
           -Dorg.gradle.java.installations.auto-detect=false

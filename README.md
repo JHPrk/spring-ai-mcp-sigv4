@@ -1,69 +1,40 @@
 # Spring AI MCP SigV4
 
-AWS Signature Version 4 authentication for Spring AI MCP Streamable HTTP clients.
-It is designed for IAM-protected MCP endpoints such as Amazon Bedrock AgentCore Gateway.
+AWS Signature Version 4 authentication for Spring AI MCP Streamable HTTP clients, including IAM-protected Amazon Bedrock AgentCore Gateway endpoints.
+The library signs the transport's serialized requests and reuses Spring AI and the MCP Java SDK for initialization, sessions, discovery, invocation, and tool callbacks.
 
-> This independent community extension is under review for inclusion in Spring AI Community.
+> This independent extension was proposed to Spring AI Community in [Project Request #38](https://github.com/spring-ai-community/community/issues/38).
 > It is not an official Spring AI artifact and is not yet published to Maven Central.
+> Publication coordinates remain provisional until namespace ownership is confirmed.
 
-## Project status
+## Features
 
-The project was submitted to Spring AI Community for review in
-[Project Request #38](https://github.com/spring-ai-community/community/issues/38).
-It remains an independent extension while that request is under review, and its publication
-coordinates remain provisional until the hosting and release process are confirmed.
-
-The closest community precedents are `mcp-security`, which separates MCP security libraries from
-Boot integration, and `spring-ai-agentcore`, which publishes AWS-specific Spring AI modules. The
-latter does not provide an MCP Gateway client request signer, so this project has a distinct scope:
-transport-level SigV4 authentication for any IAM-protected MCP Streamable HTTP endpoint.
-
-## What it provides
-
-- AWS SDK v2 SigV4 signing for MCP `GET`, `POST`, and `DELETE` requests
-- Spring Boot auto-configuration with one AWS signing scope per named MCP connection
-- Lifecycle-managed default AWS credentials and region provider chains, with optional
-  application-provided `AwsCredentialsProvider` and `AwsRegionProvider` beans
-- Safe coexistence with public and differently authenticated MCP connections
-- Fail-fast validation for connection-name mistakes and insecure HTTP
-- Source, Javadoc, and Maven publications for all library modules
+- AWS SDK v2 signing for MCP `GET`, `POST`, and `DELETE` requests, using the exact UTF-8 body.
+- Per-connection region, service name, endpoint boundary, and header exclusions.
+- Standard AWS credentials and region provider chains with application bean overrides.
+- HTTPS by default and fail-fast validation of mismatched connection names.
+- Independent public, OAuth, and IAM connections in the same application.
 
 ## Compatibility
 
 | Component | Baseline |
 |---|---|
-| Java runtime | 17+ |
+| Java runtime | 17+; CI verifies 17 and 21 |
 | Build JDK | Liberica 17.0.19+ |
 | Spring AI | 2.0.2+ within 2.0.x |
 | Spring Boot | 4.1.2+ within 4.1.x |
 | MCP Java SDK | 2.1.0, aligned with Spring AI |
 | AWS SDK for Java | 2.59.x |
 
-AssumeRole/Web Identity and SSO profiles require optional AWS credential modules; see
-[credential module dependencies](docs/configuration.md#optional-credential-modules).
-
-See [the compatibility policy](docs/compatibility.md) before changing dependency lines.
-The `0.1.x` line does not target Spring AI 1.1.x; demand for that baseline would be handled on a
-separate maintenance line. The current line requires Spring AI 2.0.2 or later in 2.0.x.
-
-## Modules
-
-| Module | Purpose |
-|---|---|
-| `spring-ai-mcp-sigv4` | Boot-independent request signing and endpoint routing |
-| `spring-ai-mcp-sigv4-spring-boot-autoconfigure` | Properties, validation, and auto-configuration |
-| `spring-ai-mcp-sigv4-spring-boot-starter` | One-dependency MCP client starter |
-| `samples/agentcore-client` | Minimal consumer application |
+The `0.1.x` line uses Spring AI's native named transport hook and the SDK's additive request-customizer API.
+Spring AI 2.0.0/2.0.1 and the old reflection-based fallback are unsupported.
+A library minor line targets one Spring AI minor line; patch releases do not intentionally break public API or property names.
+Other framework lines require separate evaluation, and stable releases must use stable framework dependencies.
 
 ## Quick start
 
-Until a public release exists, publish the artifacts locally:
-
-```shell
-./gradlew publishToMavenLocal
-```
-
-Then add the starter:
+Until a public release exists, build the artifacts locally with `./gradlew publishToMavenLocal` and enable `mavenLocal()` in your consuming Gradle build.
+Add the starter:
 
 ```kotlin
 dependencies {
@@ -71,7 +42,7 @@ dependencies {
 }
 ```
 
-Maven:
+For Maven:
 
 ```xml
 <dependency>
@@ -81,9 +52,7 @@ Maven:
 </dependency>
 ```
 
-The `org.springaicommunity` coordinates are provisional until the project is accepted by that
-organization. Do not publish those coordinates independently.
-
+Do not publish the provisional `org.springaicommunity` coordinates without namespace authorization.
 Configure transport and authentication with the same connection name:
 
 ```yaml
@@ -102,152 +71,35 @@ mcp:
     connections:
       agentcore:
         region: ${AWS_REGION:ap-northeast-2}
-        # service-name: bedrock-agentcore
 ```
 
-All AWS-authenticated MCP connections share one application-level `AwsCredentialsProvider`.
-Connections may use different endpoints, regions, and service names, but this release does not
-select a credentials provider per connection. When one provider bean is present it is reused;
-otherwise, auto-configuration creates a `DefaultCredentialsProvider` bean that Spring closes with
-the application context. Multiple equally eligible provider beans cause Spring's standard
-single-bean resolution failure at startup.
-If `region` is omitted, a lifecycle-scoped `DefaultAwsRegionProviderChain` bean resolves it.
-Neither default bean is created when no AWS-authenticated MCP connection is configured.
+Supply AWS credentials through the standard provider chain or one application `AwsCredentialsProvider` bean.
+AssumeRole, Web Identity, and SSO credential sources need [optional AWS modules](docs/configuration.md#optional-credential-modules).
+The default service name is `bedrock-agentcore`; when `region` is omitted, the standard region provider chain is used.
+The [sample](samples/agentcore-client/README.md) contains a runnable application.
 
-Credentials are resolved for every request, so normal temporary-credential refresh for the same
-IAM principal is supported. Replacing the provider's effective IAM principal during a stateful MCP
-session is different from credential refresh; session continuity is not guaranteed for endpoints
-such as AgentCore Gateway. Reconnect the MCP session after an intentional principal change.
+Only configured named connections are signed, even when another connection aliases the same URL.
+Keep OAuth/Bearer customization scoped to its own connection and preserve the serialized body after signing.
+The default policy leaves tracing headers on the wire while excluding them from `SignedHeaders`; see [header policies](docs/configuration.md#header-signing-policies) before adding exclusions.
 
-Only the `agentcore` endpoint is signed.
-Other configured MCP connections remain unchanged, and different AWS connections may use
-different regions or service names.
-Applications may also contain OAuth, fixed Bearer, public HTTP, and stdio connections. Keep each
-OAuth/Bearer customizer scoped to its own connection name or exact endpoint; stdio never enters the
-HTTP signing pipeline. See
-[mixed authentication topologies](docs/configuration.md#mixed-authentication-topologies).
-The signer owns `Authorization`, `X-Amz-Date`, `X-Amz-Content-Sha256`, and
-`X-Amz-Security-Token`. If any of those headers are already present, case-insensitively, signing
-fails before credentials are resolved. This prevents stale signing metadata from surviving a
-request. Other application and MCP headers are preserved, and stable, eligible headers are signed.
-The signer does not replace them with the AWS signer's complete header map.
+## Modules
 
-## Security defaults
+| Module | Purpose |
+|---|---|
+| `spring-ai-mcp-sigv4` | Boot-independent signing and endpoint routing |
+| `spring-ai-mcp-sigv4-spring-boot-autoconfigure` | Properties, validation, and Spring AI integration |
+| `spring-ai-mcp-sigv4-spring-boot-starter` | Core, auto-configuration, and the official Spring AI MCP client starter |
+| `samples/agentcore-client` | Minimal consumer application |
 
-The auto-configuration refuses to send signed credentials over clear-text HTTP.
-For trusted local tests only, set this per connection:
+## Contributing and documentation
 
-```yaml
-mcp.sigv4.connections.local.allow-insecure-http: true
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development, verification, and release commands.
+The default `./gradlew check` requires no AWS access; independent published-artifact consumers run with `./gradlew verifyConsumers`.
 
-Spring AI 2.0.2 composes ordered sync and async request-customizer beans. This library appends
-SigV4 using MCP SDK 2.1's `addAsyncHttpRequestCustomizer(...)` only on the named AWS transports.
-No global SigV4 request-customizer bean is registered, so an unsigned connection remains unsigned
-even when it aliases an IAM connection's exact URL. Existing request customizers run before signing.
-Application transport customizers should be declared in ordinary user configuration before this
-auto-configuration. Any transport customization installed after signing must preserve the signature;
-`@Order` alone does not make arbitrary third-party transport customizers safe.
-Do not combine OAuth Bearer authentication and SigV4 on the same connection because both write
-the `Authorization` header. The signer rejects every pre-existing SigV4-owned header instead of
-silently replacing it.
-
-Spring AI's sync MCP client does not imply a Reactor-free HTTP transport. MCP Java SDK 2.1 adapts
-the sync request customizer to its internal async pipeline and already brings Reactor through
-`mcp-core`. SigV4 resolves potentially blocking AWS credentials on `boundedElastic`; see the
-[request customizer composition](docs/configuration.md#request-customizer-composition) notes.
-
-## Late-bound HTTP headers
-
-Wire headers and SigV4 `SignedHeaders` serve different purposes. The default policy keeps W3C
-`traceparent`, `tracestate`, and `baggage`, B3 single/multi headers, and X-Ray `x-amzn-trace-id`
-on the outbound request while excluding them from signing input. HTTP client instrumentation may
-then propagate a new client span at send time without invalidating the signature.
-Stable MCP and application headers remain signed by default.
-
-For an additional exact exclusion:
-
-```yaml
-mcp.sigv4.connections.agentcore.signing:
-  additional-unsigned-headers:
-    - x-company-trace-id
-```
-
-An unsigned header loses SigV4 integrity protection; keep stable business and MCP headers signed
-whenever practical. AWS SDK may independently exclude other volatile headers. No OTel/ADOT
-production dependency or tracing-library detection is introduced. Changing Spring ordering cannot
-address javaagent send-time mutation, and disabling JDK HTTP instrumentation is not the recommended
-solution. See [header signing policies](docs/configuration.md#header-signing-policies) for defaults,
-manual construction, and an application-provided `AwsSigV4HeaderSigningPolicy` bean.
-
-## Manual use without Spring Boot
-
-```java
-var endpoint = URI.create(gatewayUrl).resolve("/mcp").normalize();
-var signer = new AwsSigV4McpRequestCustomizer(
-        DefaultCredentialsProvider.builder().build(),
-        Region.AP_NORTHEAST_2,
-        "bedrock-agentcore",
-        endpoint);
-
-var transport = HttpClientStreamableHttpTransport.builder(gatewayUrl)
-        .endpoint("/mcp")
-        .addAsyncHttpRequestCustomizer(signer)
-        .build();
-```
-
-The manual signer is bound to the exact endpoint passed to its constructor and leaves every other
-endpoint unsigned.
-Manual callers that create a closeable credentials provider also own its lifecycle.
-The core artifact has no Spring AI model, Boot, or JSON mapper dependency. For the MCP SDK's
-default JSON mapper, add `io.modelcontextprotocol.sdk:mcp-json-jackson3` at the SDK version,
-or supply a `McpJsonMapper` directly to the transport builder. The starter supplies this integration.
-
-## Build and verify
-
-```shell
-./gradlew clean check publishToMavenLocal
-```
-
-`check` includes a local regression in a forked JVM with upstream OpenTelemetry Java Agent 2.32.0.
-It exercises actual JDK HTTP instrumentation with exporters disabled, without a collector or AWS.
-Run it alone with `./gradlew :spring-ai-mcp-sigv4:otelAgentTest`.
-
-Live tests are skipped unless `MCP_GW_URL` is set. When enabled, usable AWS credentials,
-a tool name, and JSON arguments are required. The core test uses the default AWS provider chain;
-the starter test also verifies Boot auto-configuration and standard `ToolCallback` invocation.
-See [.env.example](.env.example) for all inputs.
-Run it separately from the default test lifecycle with:
-
-```shell
-./gradlew :spring-ai-mcp-sigv4:integrationTest -PagentCoreItTracing=true
-./gradlew :spring-ai-mcp-sigv4-spring-boot-starter:integrationTest
-```
-
-Live verification covers initialization, tool discovery, tool invocation, and starter callback
-conversion against a disposable IAM Gateway. Session-aware DELETE and SSE reconnect depend on the
-server issuing a session and accepting streams. Local protocol tests cover signed session teardown.
-See [instrumented HTTP verification](docs/configuration.md#instrumented-http-verification) for
-inputs and coverage limits. Live tasks never reuse cached or up-to-date results.
-
-`check` also publishes into an isolated build-directory Maven repository and verifies real Maven
-and Gradle consumer projects, including starter auto-configuration and signed loopback MCP delivery.
-Run `./gradlew check -PtestJavaVersion=21` to exercise Java 21 while keeping Java 17 bytecode.
-Python 3 and Maven 3.9+ are required for these consumer checks.
-
-The `check` lifecycle enforces Spring Java Format, Spring AI-aligned Checkstyle, Java compiler
-warnings, Error Prone's locale check, and NullAway in JSpecify mode for main sources.
-
-## Documentation
-
-- [Design](docs/design.md)
-- [Configuration reference](docs/configuration.md)
-- [Compatibility policy](docs/compatibility.md)
-- [Design evolution](docs/evolution.md)
-- [Release guide](docs/releasing.md)
-- [Maintainer guide](docs/maintainer-guide.md)
-- [Contributing](CONTRIBUTING.md) and [security policy](SECURITY.md)
+- [Configuration reference](docs/configuration.md): providers, request composition, manual use, and header policies.
+- [Design](docs/design.md): module boundaries and security decisions.
+- [Changelog](CHANGELOG.md), [support](SUPPORT.md), [security policy](SECURITY.md), and [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-Apache License 2.0
+[Apache License 2.0](LICENSE).

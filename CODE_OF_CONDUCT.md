@@ -1,13 +1,6 @@
 # Code of conduct
 
-This project follows the [Contributor Covenant Code of Conduct, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
-
-Be respectful, constructive, and welcoming.
-Harassment, discrimination, threats, and publication of another person's private information are
-not acceptable.
-
-Report conduct concerns privately to the maintainers through the contact configured for the
-hosting organization.
-Maintainers will review reports promptly, preserve confidentiality where possible, and may remove
-content or restrict participation when necessary.
-
+This project adopts the [Spring Code of Conduct](https://github.com/spring-ai-community/.github/blob/main/CODE_OF_CONDUCT.md), as used by Spring AI Community.
+All participants are expected to follow it in project spaces and when representing the project.
+Report conduct concerns privately through the policy's reporting channel, [code-of-conduct@spring.io](mailto:code-of-conduct@spring.io).
+For software vulnerabilities, use the separate [security reporting process](SECURITY.md).

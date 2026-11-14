@@ -1,15 +1,10 @@
 # Design
 
-## Problem
+IAM-protected MCP Streamable HTTP endpoints need SigV4 on each protocol request.
+Signing belongs at the final MCP request customizer, where the method, endpoint, headers, and serialized body are available.
+Spring AI and the MCP SDK retain ownership of initialization, sessions, tool discovery/invocation, and callback conversion.
 
-IAM-protected MCP Streamable HTTP endpoints require an AWS SigV4 `Authorization` header and
-related signing headers on every protocol request, including initialize/tool calls, SSE
-reconnects, and session-closing `DELETE` requests.
-Spring AI's JDK HTTP transport exposes the request body and final endpoint immediately before
-transport transmission, which is the last ordinary MCP customization boundary. Javaagents can
-still inject propagation at JDK HTTP send time.
-
-## Module boundaries
+## Modules and request flow
 
 ```text
 core
@@ -19,130 +14,72 @@ core
   package-private AwsV4HttpRequestAdapter
 
 autoconfigure
-  McpAwsProperties
-  McpSigV4AutoConfiguration
-  OnAnyMcpAwsConnectionCondition
-  McpSigV4TransportCustomizer
+  McpAwsProperties + McpSigV4AutoConfiguration
+  OnAnyMcpAwsConnectionCondition + McpSigV4TransportCustomizer
 
 starter
   core + autoconfigure + official Spring AI MCP client starter
 ```
 
-The core depends on MCP core, Spring Core, and AWS APIs; it has no Spring Boot, Spring AI model,
-or JSON mapper dependency. Manual transport users supply their own MCP JSON mapper implementation.
-The autoconfigure module keeps Boot and Spring AI autoconfiguration types optional in its
-published dependency metadata, while the starter supplies them at runtime.
-
-## Runtime flow
+The core depends on MCP core, Spring Core, and AWS credential/HTTP signing APIs, without Boot, Spring AI model types, service clients, or a JSON mapper.
+Auto-configuration keeps Boot and Spring AI types optional in its publication; the starter supplies the runtime integration.
 
 ```text
-Spring AI named MCP connection
-  -> application request customizers (ordered)
-  -> connection name configured? no: unchanged transport
-  -> yes: endpoint-bound AwsSigV4McpRequestCustomizer
-            -> SigV4-owned header present? yes: reject
-            -> snapshot wire headers once; select eligible signing headers
-            -> adapt only signing headers to SdkHttpRequest
-            -> resolve credentials on boundedElastic
-            -> sign exact UTF-8 body and eligible headers with AwsV4HttpSigner
-            -> apply only SigV4-owned output to original HttpRequest.Builder
+Spring AI named transport
+  -> existing application request customizers
+  -> endpoint-bound signer, only if the connection name is configured
+       -> validate method/endpoint and reject pre-existing SigV4-owned headers
+       -> snapshot headers and select the signing projection
+       -> resolve credentials on boundedElastic
+       -> sign the exact UTF-8 body and eligible headers
+       -> apply SigV4-owned output to the original JDK request builder
   -> HttpRequest.build()
-  -> JDK HttpClient.send/sendAsync (instrumentation may inject propagation)
-  -> wire request
+  -> JDK HttpClient.send/sendAsync, including agent propagation
 ```
 
-Credentials are resolved for each request so temporary credentials can refresh normally.
-Blocking provider-chain work is isolated on Reactor's bounded-elastic scheduler.
-Credential values and generated authorization headers are not retained or logged.
-The auto-configured default credentials provider is a Spring bean, so its closeable resources are
-released with the application context.
+Credentials resolve for every request so the AWS provider can refresh temporary credentials.
+The default provider is a Spring bean closed with the context; manual callers own their provider lifecycle.
+Neither credentials nor generated authorization values are retained for diagnostics.
 
-## Why exact endpoint routing
+## Connection isolation and composition
 
-Spring AI 2.0.2 collects ordered request-customizer beans globally. Registering the SigV4 router
-as such a bean would also sign unsigned connection aliases of a configured URL. Instead the library
-appends an endpoint-bound signer only to each configured transport name using the MCP SDK 2.1
-additive customizer API. The public endpoint router remains available for manual use.
-Existing native request customizers and earlier application transport customizers remain before signing.
-There is no capability detection or compatibility bridge for older API shapes.
+Spring AI 2.0.2 collects request-customizer beans globally.
+A global SigV4 router would also sign unsigned aliases of a configured endpoint, so this library appends a signer only through the named transport hook and SDK 2.1's additive API.
+Names must match configured transports; each signer is also bound to the exact normalized endpoint derived from `URI.create(url).resolve(endpoint)`.
+Connections retain independent regions, service names, and header exclusions, while sharing one standard credentials provider.
+The public router is available for manual use.
 
-The route is not inferred from arbitrary request hosts.
-It is built from Spring AI's configured `url` and `endpoint`, and configuration-name mismatches
-fail startup.
+Authentication properties remain in this library's `mcp.sigv4` namespace rather than extending transport properties owned by Spring AI.
+No extra request-contributor SPI or reflection fallback is needed.
+Existing request customizers run before signing; later transport customizers must preserve the signed request.
+Spring AI 2.0.2 uses transport registration order, so `@Order` alone cannot guarantee that arbitrary third-party transport customization runs first.
+See [configuration](configuration.md#request-customizer-composition) for supported composition.
 
-## Security decisions
+## Security and header policy
 
-- HTTPS is required by auto-configuration unless explicitly relaxed per connection.
-- Authentication configuration with no matching transport is rejected.
-- Named connections retain independent signing scopes and header exclusions, including URL aliases.
-- Public/unconfigured endpoints are intentionally left unsigned.
-- Both routed and directly installed signers are bound to exact normalized endpoint URIs.
-- Diagnostic strings report counts and scopes but never credentials or endpoint URLs.
-- Pre-existing SigV4-owned headers (`Authorization`, `X-Amz-Date`, `X-Amz-Security-Token`, and
-  `X-Amz-Content-Sha256`) are rejected case-insensitively before credential resolution. This
-  prevents both competing authorization and stale SigV4 metadata.
+Auto-configuration requires HTTPS by default, rejects malformed endpoints and unmatched names, and leaves public/unconfigured connections unsigned.
+Pre-existing `Authorization`, `X-Amz-Date`, `X-Amz-Security-Token`, and `X-Amz-Content-Sha256` are rejected case-insensitively before credential lookup.
+The adapter preserves application/MCP headers and applies only signer-owned output, including a signed payload-hash header.
+Diagnostic strings omit private endpoints, credentials, and authorization values.
 
-## Upstream shape
+Wire headers and `SignedHeaders` are different sets.
+The immutable header snapshot is projected into AWS signing input; excluded headers stay on the JDK builder.
+The default policy excludes W3C, B3, and X-Ray propagation because HTTP instrumentation can inject a child-span context at send time, after ordinary Spring/MCP customization.
+Stable application and MCP headers remain eligible automatically.
+An exclusion removes SigV4 integrity protection for that header; use it only for legitimate mutation after signing.
+[AWS SigV4 guidance](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv-create-signed-request.html) likewise advises excluding volatile headers.
+The public AWS signer retains its own exclusions; no internal AWS API or copied canonicalization algorithm is used.
 
-For official Spring AI inclusion, package names would move from `org.springaicommunity` to
-`org.springframework.ai`, and build files would be translated into Spring AI's Maven reactor.
-The feature should remain split into signing logic and Boot auto-configuration to avoid
-forcing AWS dependencies on MCP users who do not need IAM authentication.
+`AwsSigV4HeaderSigningPolicy` is the sole policy SPI: thread-safe, case-insensitive, and independent of mutable request state.
+Factory policies copy exclusions into immutable sets.
+One application base policy composes with exact per-connection exclusions; there is no vendor registry or connection-specific provider/policy resolver.
+See [header policies](configuration.md#header-signing-policies) for defaults and examples.
 
-## Wire headers versus signing headers
+## Verification boundaries
 
-A header can be sent without appearing in `Authorization`'s `SignedHeaders` list.
-The policy selects a projection of the immutable header snapshot for `SdkHttpRequest`.
-Unsigned headers stay on the original JDK builder with their values intact.
-Only signer-owned authentication/hash output is applied back; the policy does not suppress
-signer-generated host, date, session-token, or payload-hash metadata.
-Pre-existing signer-owned headers are rejected before both policy evaluation and credential lookup.
-The header policy does not alter the serialized body, method, endpoint, or credential lookup schedule.
-
-For example, signing `traceparent=A` and then sending `traceparent=B` fails verification if that
-header participates in the signature. Instrumentation legitimately creates an HTTP client child
-span at send time. Excluding that header permits propagation while retaining integrity for stable
-MCP and application headers. The default is deliberately an exclusion list: newly introduced
-stable headers remain protected automatically. A minimal allowlist would silently leave them unsigned.
-
-`AwsSigV4HeaderSigningPolicy` is the sole SPI. It is case-insensitive; the customizer supplies
-lower-case names with `Locale.ROOT`. Implementations must be thread-safe and independent of mutable
-request state. Factory policies copy their exclusions into immutable sets.
-The four-argument constructor delegates to the default policy; a five-argument overload accepts
-an explicit policy. `all()` restores previous library-level eligibility, subject to AWS exclusions.
-A global Spring policy plus exact per-connection exclusions covers the supported extension model.
-It does not select arbitrary different policy beans by connection or detect observability vendors.
-
-Named installation appends signing after the existing request-customizer pipeline. Transport
-customizers registered later must not modify signed requests; `@Order` alone does not enforce
-transport registration order in Spring AI 2.0.2. No Spring ordering can reorder
-Java-agent advice at `HttpClient.send/sendAsync`. Disabling OTel/ADOT JDK instrumentation loses useful
-observability and is not the library solution; neither an HttpClient wrapper nor agent-ordering
-assumptions are required.
-
-## Precedents and verification
-
-- [AWS SigV4 guidance](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv-create-signed-request.html)
-  recommends excluding volatile transport headers that intermediaries may mutate.
-- [AWS SDK Java 2.59.0 canonical headers](https://github.com/aws/aws-sdk-java-v2/blob/2.59.0/core/http-auth-aws/src/main/java/software/amazon/awssdk/http/auth/aws/internal/signer/V4CanonicalRequest.java)
-  exclude `connection`, `x-amzn-trace-id`, `user-agent`, `expect`, `transfer-encoding`, and
-  `x-forwarded-for`. The library explicitly excludes X-Ray as a propagation format and leaves
-  the remaining AWS exclusions to `AwsV4HttpSigner`. No internal AWS API is imported.
-- [Botocore](https://github.com/boto/botocore/blob/develop/botocore/auth.py) uses a signed-header
-  blacklist; [Smithy TypeScript](https://github.com/smithy-lang/smithy-typescript/blob/main/packages/signature-v4/src/getCanonicalHeaders.ts)
-  offers signable/unsignable header selection.
-- [MCP Java SDK 2.1.0 transport](https://github.com/modelcontextprotocol/java-sdk/blob/v2.1.0/mcp-core/src/main/java/io/modelcontextprotocol/client/transport/HttpClientStreamableHttpTransport.java)
-  runs the customizer, builds the request, then calls `sendAsync` for GET, POST, and DELETE.
-- [OpenTelemetry JDK HTTP instrumentation](https://github.com/open-telemetry/opentelemetry-java-instrumentation/tree/v2.32.0/instrumentation/java-http-client/javaagent/src/main/java/io/opentelemetry/javaagent/instrumentation/javahttpclient)
-  starts a client span around send and injects context on request-header access.
-- [Spring AI AgentCore OTel extension](https://github.com/spring-ai-community/spring-ai-agentcore/blob/main/spring-ai-agentcore-otel-extension/README.md)
-  documents ADOT Java-agent deployment as a supported observability model.
-
-`otelAgentTest` forks a JVM with the actual upstream agent and disabled exporters. A loopback server
-captures GET, POST, and DELETE over both synchronous and asynchronous JDK sends. Tests verify
-client-span propagation differs from the signing-time parent, excluded headers remain present,
-and stable headers remain signed. The public AWS signer recomputes the signature using captured
-wire values, original signing time, and test credentials; no canonicalization/HMAC code is copied.
-The all-headers control reproduces the mismatch and restoring the original propagation value
-restores signature validity. Tampering with a stable header or payload invalidates the signature.
-All OpenTelemetry dependencies are test-only; this regression does not need AWS or a collector.
+Local protocol tests verify signed delivery, bodies, session teardown, and named-connection isolation.
+The real agent regression recomputes signatures from captured wire requests with the public AWS signer and synthetic credentials.
+It proves send-time propagation remains present but unsigned, stable-header/body tampering invalidates signatures, and the all-headers control reproduces the tracing conflict.
+Independent consumers verify actual publications, dependency boundaries, and Boot integration.
+Live Gateway tests provide separate service-level evidence; they do not establish session/SSE behavior the server did not exercise.
+Commands and prerequisites are maintained in [CONTRIBUTING.md](../CONTRIBUTING.md).

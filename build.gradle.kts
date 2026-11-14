@@ -220,24 +220,10 @@ subprojects {
 tasks.named("check") {
 	dependsOn(subprojects.map { "${it.path}:check" })
 	dependsOn("verifySourceHeaders")
-	dependsOn("verifyConsumers")
+	dependsOn("verifyPublication")
 }
 
-tasks.register<Exec>("verifyConsumers") {
-	description = "Verifies publication metadata and real Maven/Gradle starter consumers without AWS"
-	group = LifecycleBasePlugin.VERIFICATION_GROUP
-	dependsOn(publishedModules.map { ":$it:publishAllPublicationsToVerificationRepository" })
-	mustRunAfter(tasks.named("clean"))
-	val launcher = project(":spring-ai-mcp-sigv4").extensions.getByType<JavaToolchainService>().launcherFor {
-		languageVersion = JavaLanguageVersion.of(providers.gradleProperty("testJavaVersion").orElse("17").get().toInt())
-	}
-	doFirst {
-		environment("JAVA_HOME", launcher.get().metadata.installationPath.asFile.absolutePath)
-	}
-	commandLine("python3", "verification/verify_consumers.py", "--group", providers.gradleProperty("projectGroup").get(),
-		"--version", providers.gradleProperty("projectVersion").get(),
-		"--boot", libs.versions.spring.boot.get())
-}
+apply(from = "gradle/verification.gradle.kts")
 
 tasks.register("verifySourceHeaders") {
 	val javaSources = fileTree(rootDir) {

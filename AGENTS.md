@@ -1,73 +1,39 @@
-# AGENTS.md
+# Repository instructions
 
-This file gives coding assistants the repository-specific constraints needed to make safe,
-reviewable changes. Human contributors remain responsible for every change.
+Human contributors remain responsible for every change.
+See [README.md](README.md) for module responsibilities and supported versions, and [CONTRIBUTING.md](CONTRIBUTING.md) for style, verification, and release requirements.
 
-## Scope and architecture
+## Architecture and security
 
-| Module | Responsibility |
-|---|---|
-| `spring-ai-mcp-sigv4` | Boot-independent JDK HTTP request signing and endpoint routing |
-| `spring-ai-mcp-sigv4-spring-boot-autoconfigure` | Properties, validation, and Spring AI integration |
-| `spring-ai-mcp-sigv4-spring-boot-starter` | Consumer-facing dependency aggregation |
-| `samples/agentcore-client` | Minimal usage example; never place reusable logic here |
+- Keep signing in the Boot-independent core and Boot/Spring AI integration in auto-configuration.
+- Use standard AWS provider interfaces; do not add AWS service clients or cache resolved credentials.
+- Resolve credentials for each request on bounded-elastic and sign the exact serialized UTF-8 body.
+- Install endpoint-bound signers only through named transports and the SDK's additive API; never expose the router as a global request-customizer bean.
+- Keep unsigned connection aliases unsigned, and require HTTPS by default.
+- Run signing after application request customization; transport registration order and request-customizer ordering are distinct.
+- Reject pre-existing SigV4-owned headers and preserve application/MCP wire headers.
+- Copy only signer-owned output back to the JDK builder, including the payload hash when signed.
+- Keep header policy in the core, telemetry dependencies test-only, and excluded propagation headers on the wire.
+- Do not add vendor detection, production request observation, or HttpClient wrappers.
+- Never log credentials, signed headers, session IDs, tool payloads, or private infrastructure identifiers.
+- Keep bodyless GET/DELETE payloads nullable under JSpecify.
 
-Keep signing logic out of auto-configuration. Keep Spring Boot dependencies out of the core
-module. Do not add AWS service clients: this library depends only on credentials, region, and HTTP
-signing APIs.
+## Change discipline
 
-## Security invariants
-
-- Sign only exact endpoints configured under
-  `mcp.sigv4.connections`.
-- Require HTTPS by default. `allow-insecure-http` is only for trusted local tests.
-- Resolve credentials for every request and never cache, log, serialize, or expose them.
-- Never log endpoint URLs, `Authorization`, `X-Amz-Date`, `X-Amz-Security-Token`, account IDs, or
-  session tokens.
-- Copy only the SigV4 headers required by the signed request back from the AWS signer, including
-  `X-Amz-Content-Sha256` when it appears in `SignedHeaders`. Preserve application and MCP headers
-  already present on the JDK request builder.
-- SigV4 must run after other ordered request customizers so eligible stable MCP and application
-  headers are covered by the signature. Explicit late-bound/volatile headers remain on the wire
-  while intentionally excluded from `SignedHeaders`. Never remove them from the request builder.
-- Header signing policy belongs in the Boot-independent core. Do not add production tracing
-  dependencies, vendor detection, or HttpClient wrappers for send-time propagation.
-- Do not combine an OAuth Bearer customizer and SigV4 on the same connection.
-
-## Compatibility invariants
-
-- Java 17 is the baseline.
-- The `0.1.x` line requires Spring AI `2.0.2+` within `2.0.x`, Boot `4.1.2+` within `4.1.x`,
-  and the Spring AI-aligned MCP SDK `2.1.0` baseline.
-- Install signing only through the named transport hook and the SDK's additive customizer API.
-  Never register the router as a global request-customizer bean: unsigned URL aliases must stay unsigned.
-- Keep signing after all application request customization. Do not rely on `@Order` alone for
-  third-party transport customizers; Spring AI iterates those in registration order.
-- Do not restore reflection-based capability detection or the 2.0.0 fallback bridge.
-- Request bodies are nullable for bodyless GET and DELETE calls, even though the repository uses
-  package-level `@NullMarked`.
-
-## Change rules
-
-- Preserve Apache 2.0 headers on every Java source.
-- Add `@since` and useful JavaDoc to new public API. Comments must explain contracts or rationale,
-  not restate code.
-- Add configuration metadata and documentation with every new property.
-- Keep unit tests focused. Use `*Tests` for local tests and `*IT` for opt-in live integration tests.
-- Never make a live AWS test run by default or require long-lived credentials.
-- Do not change provisional `org.springaicommunity` publication coordinates without confirmed
-  namespace ownership.
+- Preserve Apache headers, Spring Java Format, useful public Javadoc, and `@since` tags.
+- Update metadata, binding tests, and the configuration reference with property changes.
+- Prefer public behavioral or wire-level assertions to tests of private implementation details.
+- Keep live AWS tests opt-in and avoid long-lived credentials.
+- Do not restore the removed reflection fallback or change provisional publication coordinates without confirmed namespace ownership.
+- Keep generated evidence and dated review diaries outside Git.
 
 ## Verification
 
-Run before handing off a change:
-
 ```shell
-./gradlew clean check publishToMavenLocal
+./gradlew clean check verifyConsumers publishToMavenLocal
+./gradlew check verifyConsumers -PtestJavaVersion=21
 ```
 
-`check` includes isolated Maven/Gradle publication consumers and the local `otelAgentTest` with a real javaagent and no external exporter.
-Keep that regression deterministic and keep all OTel artifacts test-only.
-
-When AWS integration behavior changes, also run `AgentCoreGatewaySigV4IT` with the environment
-documented in `.env.example`, using short-lived credentials and a disposable test gateway.
+`check` includes artifact/metadata checks and collector-free agent tests; `verifyConsumers` runs independent published-artifact builds.
+Neither requires AWS.
+When AWS integration behavior changes, also run the authorized opt-in live tests documented in CONTRIBUTING.md with short-lived credentials and a disposable gateway.
