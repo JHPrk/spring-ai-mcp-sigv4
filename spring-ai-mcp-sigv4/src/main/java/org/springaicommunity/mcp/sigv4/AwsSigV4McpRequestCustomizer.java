@@ -50,13 +50,18 @@ import org.springframework.util.Assert;
  * <p>
  * Credentials are resolved for each request on Reactor's bounded-elastic scheduler. The
  * customizer does not retain credential values or signed authorization headers.
- * </p>
  *
  * <p>
  * Requests that already contain a SigV4-owned header are rejected before credentials are
  * resolved. Other application and MCP headers are preserved on the wire; eligible headers
  * are included in the signature according to the header signing policy.
- * </p>
+ *
+ * <p>
+ * Earlier customizers must preserve the transport's method, URI, and serialized body.
+ * Method and URI mismatches are rejected before credential lookup so signing metadata
+ * cannot be attached to a rewritten destination. The body argument must remain the exact
+ * UTF-8 payload supplied by the MCP transport; this customizer does not consume or
+ * replace the opaque JDK body publisher.
  *
  * @since 0.1.0
  */
@@ -80,7 +85,7 @@ public final class AwsSigV4McpRequestCustomizer implements McpAsyncHttpClientReq
 	private final AwsV4HttpRequestAdapter requestAdapter = new AwsV4HttpRequestAdapter();
 
 	/**
-	 * Creates an MCP SigV4 request customizer.
+	 * Create an MCP SigV4 request customizer.
 	 * @param credentialsProvider provider resolved for every HTTP request
 	 * @param region signing region used in the credential scope
 	 * @param serviceName signing service name, typically {@code bedrock-agentcore}
@@ -93,7 +98,7 @@ public final class AwsSigV4McpRequestCustomizer implements McpAsyncHttpClientReq
 	}
 
 	/**
-	 * Creates a customizer with an explicit header signing policy.
+	 * Create a customizer with an explicit header signing policy.
 	 * @param credentialsProvider provider resolved for every HTTP request
 	 * @param region signing region used in the credential scope
 	 * @param serviceName signing service name
@@ -124,6 +129,8 @@ public final class AwsSigV4McpRequestCustomizer implements McpAsyncHttpClientReq
 			return Mono.just(builder);
 		}
 		HttpRequest snapshot = builder.build();
+		Assert.state(snapshot.uri().equals(endpoint), "MCP request URI must not change before SigV4 signing");
+		Assert.state(snapshot.method().equals(method), "MCP request method must not change before SigV4 signing");
 		Map<String, List<String>> wireHeaders = snapshot.headers().map();
 		boolean hasSigV4OwnedHeader = wireHeaders.keySet()
 			.stream()
@@ -158,7 +165,7 @@ public final class AwsSigV4McpRequestCustomizer implements McpAsyncHttpClientReq
 	}
 
 	/**
-	 * Returns whether this customizer signs the given exact endpoint.
+	 * Return whether this customizer signs the given exact endpoint.
 	 * @param endpoint MCP request endpoint
 	 * @return {@code true} when the endpoint matches this customizer's signing scope
 	 * @since 0.1.0

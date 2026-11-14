@@ -40,7 +40,7 @@ public final class AwsSigV4HeaderSigningPolicies {
 	}
 
 	/**
-	 * Signs stable headers by default, excluding W3C trace context and baggage, B3
+	 * Sign stable headers by default, excluding W3C trace context and baggage, B3
 	 * single/multi headers, and X-Ray propagation. Other AWS canonical-header exclusions
 	 * remain the responsibility of the AWS signer; no internal AWS API is used.
 	 * @return shared default policy
@@ -51,8 +51,8 @@ public final class AwsSigV4HeaderSigningPolicies {
 	}
 
 	/**
-	 * Restores eligibility of all existing headers at this library's signing boundary.
-	 * The AWS signer still applies its own exclusions, including {@code x-amzn-trace-id}.
+	 * Restore eligibility of all existing headers at this library's signing boundary. The
+	 * AWS signer still applies its own exclusions, including {@code x-amzn-trace-id}.
 	 * @return shared policy accepting all headers
 	 * @since 0.1.0
 	 */
@@ -61,8 +61,8 @@ public final class AwsSigV4HeaderSigningPolicies {
 	}
 
 	/**
-	 * Excludes only the given exact header names, without adding default exclusions.
-	 * Names are trimmed, normalized with {@link Locale#ROOT}, deduplicated, and copied.
+	 * Exclude only the given exact header names, without adding default exclusions. Names
+	 * are trimmed, normalized with {@link Locale#ROOT}, deduplicated, and copied.
 	 * Excluding a header removes its SigV4 integrity protection. Keep stable business and
 	 * MCP headers eligible whenever practical.
 	 * @param headerNames non-null collection of non-blank header names

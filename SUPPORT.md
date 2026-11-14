@@ -1,9 +1,8 @@
 # Support
 
-Use GitHub Discussions for design and usage questions after the repository is published.
-Use GitHub Issues for reproducible defects and feature proposals.
+Use [GitHub Discussions](https://github.com/JHPrk/spring-ai-mcp-sigv4/discussions) for design and usage questions.
+Use [GitHub Issues](https://github.com/JHPrk/spring-ai-mcp-sigv4/issues) for reproducible defects and feature proposals, including the library/framework versions and a minimal redacted reproduction.
+Report suspected vulnerabilities through [private security reporting](SECURITY.md).
 
-AWS account configuration, IAM policy design, and Amazon Bedrock AgentCore service availability
-are outside this library's support boundary.
-For Spring AI framework questions, use the official Spring AI discussions and documentation.
-
+For general framework questions, use [Spring AI Discussions](https://github.com/spring-projects/spring-ai/discussions) and [documentation](https://docs.spring.io/spring-ai/reference/).
+AWS account administration, IAM policy design, and AgentCore service availability belong with AWS support rather than this library's issue tracker.

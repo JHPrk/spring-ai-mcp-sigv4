@@ -42,15 +42,16 @@ import org.springframework.util.StringUtils;
 public class McpAwsProperties {
 
 	/** Configuration prefix for MCP AWS authentication. */
-	public static final String CONFIG_PREFIX = "spring.ai.mcp.client.authorization.aws";
+	public static final String CONFIG_PREFIX = "mcp.sigv4";
 
 	/** Default SigV4 service name for Amazon Bedrock AgentCore Gateway. */
 	public static final String DEFAULT_SERVICE_NAME = "bedrock-agentcore";
 
+	/** AWS signing settings keyed by Spring AI MCP connection name. */
 	private final Map<String, Connection> connections = new HashMap<>();
 
 	/**
-	 * Returns AWS authentication settings keyed by MCP connection name.
+	 * Return AWS authentication settings keyed by MCP connection name.
 	 * @return mutable connection settings map used by configuration binding
 	 */
 	public Map<String, Connection> getConnections() {
@@ -64,16 +65,20 @@ public class McpAwsProperties {
 	 */
 	public static class Connection {
 
+		/** AWS SigV4 service signing name. */
 		private String serviceName = DEFAULT_SERVICE_NAME;
 
+		/** AWS region, or the standard AWS region provider chain when omitted. */
 		private @Nullable String region;
 
+		/** Whether clear-text HTTP is permitted for trusted local tests. */
 		private boolean allowInsecureHttp;
 
+		/** Header eligibility settings for this connection. */
 		private final Signing signing = new Signing();
 
 		/**
-		 * Returns header eligibility settings for this connection.
+		 * Return header eligibility settings for this connection.
 		 * @return signing settings
 		 * @since 0.1.0
 		 */
@@ -82,7 +87,7 @@ public class McpAwsProperties {
 		}
 
 		/**
-		 * Returns the AWS SigV4 service signing name.
+		 * Return the AWS SigV4 service signing name.
 		 * @return configured name or {@value McpAwsProperties#DEFAULT_SERVICE_NAME}
 		 */
 		public String getServiceName() {
@@ -90,7 +95,7 @@ public class McpAwsProperties {
 		}
 
 		/**
-		 * Sets the AWS SigV4 service signing name.
+		 * Set the AWS SigV4 service signing name.
 		 * @param serviceName service signing name
 		 */
 		public void setServiceName(String serviceName) {
@@ -98,7 +103,7 @@ public class McpAwsProperties {
 		}
 
 		/**
-		 * Returns the signing region, or {@code null} to use the AWS region provider
+		 * Return the signing region, or {@code null} to use the AWS region provider
 		 * chain.
 		 * @return configured AWS region
 		 */
@@ -107,7 +112,7 @@ public class McpAwsProperties {
 		}
 
 		/**
-		 * Sets the signing region, or {@code null} to use the AWS region provider chain.
+		 * Set the signing region, or {@code null} to use the AWS region provider chain.
 		 * @param region AWS region identifier
 		 */
 		public void setRegion(@Nullable String region) {
@@ -115,7 +120,7 @@ public class McpAwsProperties {
 		}
 
 		/**
-		 * Returns whether signing over clear-text HTTP is explicitly allowed.
+		 * Return whether signing over clear-text HTTP is explicitly allowed.
 		 * @return {@code true} only when insecure HTTP was explicitly enabled
 		 */
 		public boolean isAllowInsecureHttp() {
@@ -123,7 +128,7 @@ public class McpAwsProperties {
 		}
 
 		/**
-		 * Sets whether clear-text HTTP is permitted for trusted local tests.
+		 * Set whether clear-text HTTP is permitted for trusted local tests.
 		 * @param allowInsecureHttp whether clear-text HTTP is permitted
 		 */
 		public void setAllowInsecureHttp(boolean allowInsecureHttp) {
@@ -139,10 +144,13 @@ public class McpAwsProperties {
 	 */
 	public static class Signing {
 
+		/**
+		 * Additional exact header names excluded from signing but retained on the wire.
+		 */
 		private Set<String> additionalUnsignedHeaders = Set.of();
 
 		/**
-		 * Returns normalized exclusions. These headers remain on the actual HTTP request
+		 * Return normalized exclusions. These headers remain on the actual HTTP request
 		 * but are omitted from the library's signing input.
 		 * @return immutable, case-normalized header names; empty by default
 		 * @since 0.1.0
@@ -152,7 +160,7 @@ public class McpAwsProperties {
 		}
 
 		/**
-		 * Sets exact additional exclusions, trimming and deduplicating case variants.
+		 * Set exact additional exclusions, trimming and deduplicating case variants.
 		 * @param headerNames non-null set of non-blank header names
 		 * @throws IllegalArgumentException if names are null or blank
 		 * @since 0.1.0

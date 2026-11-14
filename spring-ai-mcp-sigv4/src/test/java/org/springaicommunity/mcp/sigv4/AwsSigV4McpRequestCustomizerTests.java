@@ -227,6 +227,37 @@ class AwsSigV4McpRequestCustomizerTests {
 	}
 
 	@Test
+	void shouldRejectRewrittenDestinationBeforeCredentialLookup() {
+		URI endpoint = URI.create("https://example.com/mcp");
+		AtomicInteger resolutions = new AtomicInteger();
+		var customizer = new AwsSigV4McpRequestCustomizer(() -> {
+			resolutions.incrementAndGet();
+			return BASIC_CREDENTIALS;
+		}, Region.AP_NORTHEAST_2, "bedrock-agentcore", endpoint);
+		var builder = HttpRequest.newBuilder(URI.create("https://other.example/mcp")).GET();
+		assertThatThrownBy(() -> customizer.customize(builder, "GET", endpoint, null, McpTransportContext.EMPTY))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessage("MCP request URI must not change before SigV4 signing");
+		assertThat(resolutions).hasValue(0);
+		assertThat(builder.build().headers().firstValue("Authorization")).isEmpty();
+	}
+
+	@Test
+	void shouldRejectChangedMethodBeforeCredentialLookup() {
+		URI endpoint = URI.create("https://example.com/mcp");
+		AtomicInteger resolutions = new AtomicInteger();
+		var customizer = new AwsSigV4McpRequestCustomizer(() -> {
+			resolutions.incrementAndGet();
+			return BASIC_CREDENTIALS;
+		}, Region.AP_NORTHEAST_2, "bedrock-agentcore", endpoint);
+		var builder = HttpRequest.newBuilder(endpoint).DELETE();
+		assertThatThrownBy(() -> customizer.customize(builder, "GET", endpoint, null, McpTransportContext.EMPTY))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessage("MCP request method must not change before SigV4 signing");
+		assertThat(resolutions).hasValue(0);
+	}
+
+	@Test
 	void shouldIncludeSessionToken() {
 		AwsSessionCredentials credentials = AwsSessionCredentials.create("SESSIONKEY", "session-secret",
 				"session-token-value");
@@ -361,7 +392,7 @@ class AwsSigV4McpRequestCustomizerTests {
 				"bedrock-agentcore", endpoint);
 		var transport = HttpClientStreamableHttpTransport.builder(endpoint.toString())
 			.endpoint("/mcp")
-			.asyncHttpRequestCustomizer(signer)
+			.addAsyncHttpRequestCustomizer(signer)
 			.build();
 		var client = McpClient.async(transport).build();
 

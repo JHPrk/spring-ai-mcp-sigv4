@@ -26,7 +26,6 @@ package org.springaicommunity.mcp.sigv4;
  * Implementations must be thread-safe and treat header names case-insensitively. The
  * request customizer supplies lower-case names using {@link java.util.Locale#ROOT}.
  * Implementations must not depend on mutable per-request state.
- * </p>
  *
  * @since 0.1.0
  */

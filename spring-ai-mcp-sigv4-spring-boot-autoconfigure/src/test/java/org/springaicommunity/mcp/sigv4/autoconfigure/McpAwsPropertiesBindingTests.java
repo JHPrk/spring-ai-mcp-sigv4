@@ -33,7 +33,7 @@ class McpAwsPropertiesBindingTests {
 				"spring.ai.mcp.client.streamable-http.connections.agentcore.url=https://gw.example.com/base/",
 				"spring.ai.mcp.client.streamable-http.connections.agentcore.endpoint=mcp",
 				"spring.ai.mcp.client.streamable-http.connections.public.url=https://public.example.com",
-				"spring.ai.mcp.client.authorization.aws.connections.agentcore.region=ap-northeast-2");
+				"mcp.sigv4.connections.agentcore.region=ap-northeast-2");
 
 	@Test
 	void bindsTransportAndAuthenticationPropertiesSeparately() {
