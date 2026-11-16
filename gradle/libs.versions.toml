@@ -23,7 +23,7 @@ spring-ai-mcp = { module = "org.springframework.ai:spring-ai-mcp" }
 mcp-core = { module = "io.modelcontextprotocol.sdk:mcp-core" }
 mcp-json-jackson3 = { module = "io.modelcontextprotocol.sdk:mcp-json-jackson3" }
 spring-core = { module = "org.springframework:spring-core" }
-spring-cloud-aws-starter = { module = "io.awspring.cloud:spring-cloud-aws-starter", version = "4.2.1" }
+spring-cloud-aws-starter = { module = "io.awspring.cloud:spring-cloud-aws-starter", version = "4.2.2" }
 spring-ai-starter-mcp-client = { module = "org.springframework.ai:spring-ai-starter-mcp-client" }
 spring-ai-autoconfigure-mcp-client-common = { module = "org.springframework.ai:spring-ai-autoconfigure-mcp-client-common" }
 spring-ai-autoconfigure-mcp-client-httpclient = { module = "org.springframework.ai:spring-ai-autoconfigure-mcp-client-httpclient" }
