@@ -2,7 +2,7 @@
 spring-ai = "2.0.2"
 mcp = "2.1.0"
 aws-sdk = "2.59.0"
-spring-boot = "4.1.2"
+spring-boot = "4.2.0"
 spring-dependency-management = "1.1.7"
 spring-javaformat = "0.0.48"
 errorprone-plugin = "5.1.1"
